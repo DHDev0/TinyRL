@@ -7,3 +7,5 @@ Minimalist Deep reinforcement leaning implementation on [Tinygrad](https://githu
 To learn about tinygrad, the documentation [HERE](https://github.com/tinygrad/tinygrad/tree/master/docs).
 
 Inspired by https://github.com/seungeunrho/minimalRL concept using Tinygrad
+
+Work in progress...
