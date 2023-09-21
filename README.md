@@ -1,6 +1,6 @@
 # TinyRL
 
-Minimalist Deep reinforcement leaning implementation on [Tinygrad](https://github.com/tinygrad/tinygrad).
+Minimalist Deep reinforcement leaning implementation on [Tinygrad](https://github.com/tinygrad/tinygrad) using [Gymnasium](https://gymnasium.farama.org/) for simulation.
 
 [Setup Tinygrad](https://gist.github.com/DHDev0/dca1e0a14c1456f1909517767cffd5af) on Nvidia GPU.
 
