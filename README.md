@@ -1,5 +1,4 @@
 # TinyRL
-TyniRL
 
 Minimalist Deep reinforcement leaning implementation on [Tinygrad](https://github.com/tinygrad/tinygrad).
 
