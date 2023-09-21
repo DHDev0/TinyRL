@@ -8,6 +8,8 @@ from tinygrad.ops import _Device as Device
 import numpy as np
 import gymnasium as gym
 import time
+import math
+
 # Device.DEFAULT = "GPU"
 
 #Hyperparameters
@@ -21,6 +23,7 @@ episode        = 2000 #number of episode is the ammount of completed game
 print_interval = 10 #every X epoch
 c_type = dtypes.float32
 
+### Loss function
 
 def sgn(x): return x/x.pow(2.).sqrt()#.abs()
 def inf_to(x,y): return (1-sgn(x-y))/2
@@ -37,7 +40,9 @@ def smooth_l1_loss(predicted_value, target_value, reduction='mean', beta=1.0):
   #   return loss.mean()
   # return loss.sum()
 
-import math
+### Model
+
+
 class LSTMCell:
   def __init__(self, input_size, hidden_size, dropout):
     self.dropout = dropout
@@ -199,25 +204,11 @@ def training(ppo_model,buffer,optimizer,K_epoch):
     surrogate = (diff*surrogate1) + (surrogate2*(-1*(diff-1)))
     # surrogate = surrogate1.add(surrogate2).sub(surrogate1 - surrogate2).mul(0.5) #equivalent of Torch.minimum
     loss = -surrogate + smooth_l1_loss(state_value, td_target)
-
-    # print("|||||||||||||||||||||||||||||||||||||||||||||||")
-    # print("pi_action: ",pi_action.flatten().numpy())
-    # print("action_prob: ",action_prob_batch.flatten().numpy())
-    # print("RATIO: ",ratio.flatten().numpy())
-    # print("surro",-surrogate.numpy())
-    # work with 800episode with lossmean with, zergograd,backward,step
-    # optimizer.zero_grad()
-    # print("|||||||||||||||||||||||||0000000000000000000000000||||||||||||||||||||||")
-    # print("CTX: ", loss._ctx.__class__)
-    # print("GRAD: ",*(i.grad.numpy() for i in optimizer.params if i.grad is not None ),sep="\n")
     optimizer.zero_grad()
     loss = loss.mean()
     loss.backward()
     optimizer.step()
-    # optimizer.zero_grad()
-    # print("LOSS: ", loss.detach().numpy())
-    # print("|||||||||||||||||||||||||||model grad||||||||||||||||||||")
-    # print(*(i.grad.numpy() for i in optimizer.params if i.grad is not None ),sep="\n")
+
 
 if __name__ == '__main__':
   #check for gymnasium
@@ -284,9 +275,7 @@ if __name__ == '__main__':
     training(ppo_model,
             buffer,
             optimizer,
-            K_epoch)
-  print("||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||")
-      
+            K_epoch)      
   environment.close()
   
   
@@ -295,7 +284,7 @@ if __name__ == '__main__':
   
   
   
-  #tinyegrad need fix tensor size, so should do the same amount of data
+#It's not learning even with gradient set correctly like pytorch
   
 #   Tinygrad:
 # next_state_value.requires_grad:  True
