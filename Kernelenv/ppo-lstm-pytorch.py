@@ -194,13 +194,13 @@ class KernelEnv:
             
             self.max_regret = []            
             try:
-                linearized_kernel = ast_str_to_lin(kernel_pick).copy()
-                buffer_info = bufs_from_lin(linearized_kernel).copy()
+                linearized_kernel = ast_str_to_lin(kernel_pick)
+                buffer_info = bufs_from_lin(linearized_kernel)
                 init_reward = time_linearizer(linearized_kernel, buffer_info, allow_test_size=True,should_copy=True, max_global_size=self.max_global_size)
                 if math.isinf(init_reward) or np.isnan(init_reward):
                     del linearized_kernel , buffer_info , init_reward
                     raise ValueError("Invalid initial time.")
-                init_state = np.array(lin_to_feats(linearized_kernel).copy())
+                init_state = np.array(lin_to_feats(linearized_kernel))
                 self.init_reward , self.init_state, self.linearized_kernel = init_reward,init_state, str(linearized_kernel.ast)
                 del linearized_kernel , buffer_info , init_reward
                 self.done = False
@@ -221,7 +221,7 @@ class KernelEnv:
         if action_idx >= 0:
             try:
                 action_to_apply = actions[action_idx - 1]
-                linearized_kernel_copy = ast_str_to_lin(self.linearized_kernel).copy()
+                linearized_kernel_copy = ast_str_to_lin(self.linearized_kernel)
                 # Check if action axis is within the shape length of the kernel
                 if action_to_apply.axis >= linearized_kernel_copy.shape_len:
                     del linearized_kernel_copy
@@ -242,7 +242,7 @@ class KernelEnv:
                 if up > 256 or lcl > 256:
                     del linearized_kernel_copy
                     raise ValueError("Invalid action: exceeds workgroup size constraints.")
-                buffer_info = bufs_from_lin(linearized_kernel_copy).copy()
+                buffer_info = bufs_from_lin(linearized_kernel_copy)
                 
                 # Calculate and return the reward
                 compute_time = time_linearizer(linearized_kernel_copy, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
@@ -262,7 +262,7 @@ class KernelEnv:
         state = self.next_state if hasattr(self, 'next_state') else self.init_state
         if not self.done:
             try:
-                state = np.array(lin_to_feats(linearized_kernel_copy).copy())
+                state = np.array(lin_to_feats(linearized_kernel_copy))
                 del linearized_kernel_copy
             except Exception as e:
                 # print(e)
