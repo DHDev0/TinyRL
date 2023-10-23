@@ -60,7 +60,12 @@ def load_val(default=0,filename="state.pkl"):
     try: 
         with open(f"{path_save_episode}{filename}", "rb") as f: return pickle.load(f)
     except FileNotFoundError:return default
-    
+
+from tinygrad.helpers import getenv
+def force_oom():
+    if getenv("TRITON") == 1 or getenv("CUDA") == 1:
+        try: large_tensor = Tensor.empty(10000000000000).realize()
+        except Exception as e: pass
 # import os
 # import signal
 # import sys
@@ -443,6 +448,7 @@ def training():
         gc.collect(1)
         gc.collect(2)
         torch.cuda.empty_cache()
+        force_oom()
         
         if len(model.data) >= minimum_batch_size:
             with open("/home/hotmil/ubuntu/TinyRL/saving_model.txt", "w") as f: f.write("")
