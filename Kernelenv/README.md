@@ -1,9 +1,9 @@
 Training:
 ```py
-TRITON=1 python ppo-lstm-pytorch.py --path absolute/to/save/trial
+TRITON=1 python ppo-lstm-pytorch.py --path /absolute/path/to/trial/folder/
 ```
 
 Inference on resnet:
 ```py
-TRITON=1 python ppo-lstm-pytorch.py --path absolute/to/save/trial --infer
+TRITON=1 python ppo-lstm-pytorch.py --path /absolute/path/to/trial/folder/ --infer
 ```
