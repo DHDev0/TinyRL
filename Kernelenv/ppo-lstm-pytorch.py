@@ -1,20 +1,6 @@
-
-############## HYPERPARAMETER##############
-llearning_rate = 0.0003
-gamma = 0.97
-lmbda = 0.90
-eps_clip = 0.1
-K_epoch = 2
-minimum_batch_size = 60
-max_steps_limit = 60
-episode_count = 2000
-print_interval = 1
-path_save_episode = '/project/folder/path/'
-model_path = path_save_episode+'model_all.pth'
-import os; os.makedirs(path_save_episode, exist_ok=True)
-
 ############## TOOLKITS ##############
 
+from tinygrad.tensor import Tensor
 from tinygrad.helpers import getenv
 def force_oom():
     if 1 in [getenv("TRITON") ,getenv("CUDA")]:
@@ -34,11 +20,6 @@ def split_and_find_max(list_of_lists):
     max_values = [max(stack, key=lambda x: x[0])[0] for stack in stacked_list]
     return max_values
 
-
-def print_to_file(file_path, text):
-    with open(file_path, 'a') as file:
-        print(text, file=file)
-
 # #extract custom kernel to use in KernelEnv
 from tinygrad.tensor import Tensor
 from tinygrad.ops import LoadOps, Device, Compiled
@@ -53,41 +34,30 @@ def extract_ast_kernels(mdl,example) -> List[Any]:
     sched = [str(x.ast) for x in sched if x.ast.op not in LoadOps]
     return sched
 
-
 import numpy as np
 def count_pos_neg(arr):
     pos_count , neg_count = np.sum(arr > 0) , np.sum(arr < 0)
     return pos_count, neg_count
 
+def print_to_file(file_path, text):
+    with open(file_path, 'a') as file:
+        print(text, file=file)
+
 import pickle
 def save_val(episode,filename="state.pkl"):
-    with open(f"{path_save_episode}{filename}", "wb") as f:pickle.dump(episode, f)
+    with open(f"{filename}", "wb") as f:pickle.dump(episode, f)
 def load_val(default=0,filename="state.pkl"):
     try: 
-        with open(f"{path_save_episode}{filename}", "rb") as f: return pickle.load(f)
+        with open(f"{filename}", "rb") as f: return pickle.load(f)
     except FileNotFoundError:return default
-    
-# import os
-# import signal
-# import sys
-# def handle_segfault(signum, frame):
-#     print("Segmentation fault detected! Restarting script...")
-#     os._exit(0)
-
 
 ############## ENV ##############
-import os
-import sqlite3
-import time
-import numpy as np
-import pickle
-import math
+import os , sqlite3, time , pickle, math
 import numpy as np
 from tinygrad.tensor import Tensor
 from tinygrad.features.search import actions, bufs_from_lin, time_linearizer
 from extra.optimization.helpers import load_worlds, ast_str_to_lin, lin_to_feats
 from tinygrad.codegen.optimizer import Opt
-import gc
 
 
 class KernelEnv:
@@ -150,9 +120,10 @@ class KernelEnv:
     def add_kernels(self, kernel_list):
         for kernel in kernel_list:
             serialized_kernel = pickle.dumps(kernel)
-            res = self.query_db("SELECT * FROM kernels WHERE kernel_data = ?", (serialized_kernel,))
-            if len(res) == 0: self.update_db("INSERT INTO kernels (kernel_data, last_num_steps, total_visits) VALUES (?, 0, 0)", (serialized_kernel,))
-
+            if not self.inference_mode:
+                res = self.query_db("SELECT * FROM kernels WHERE kernel_data = ?", (serialized_kernel,))
+                if len(res) == 0: self.update_db("INSERT INTO kernels (kernel_data, last_num_steps, total_visits) VALUES (?, 0, 0)", (serialized_kernel,))
+            else: self.update_db("INSERT INTO kernels (kernel_data, last_num_steps, total_visits) VALUES (?, 0, 0)", (serialized_kernel,))
     def priority_game(self):
         data = self.query_db("SELECT id, last_num_steps, total_visits FROM kernels")
         active_indices = np.array([row[0] for row in data])
@@ -196,11 +167,9 @@ class KernelEnv:
                 buffer_info = bufs_from_lin(linearized_kernel)
                 init_reward = time_linearizer(linearized_kernel, buffer_info, allow_test_size=True,should_copy=True, max_global_size=self.max_global_size)
                 if math.isinf(init_reward) or np.isnan(init_reward):
-                    # del linearized_kernel , buffer_info , init_reward
                     raise ValueError("Invalid initial time.")
                 init_state = np.array(lin_to_feats(linearized_kernel))
-                self.init_reward , self.init_state, self.linearized_kernel = init_reward,init_state, str(linearized_kernel.ast)
-                # del linearized_kernel , buffer_info , init_reward
+                self.init_reward , self.init_state, self.linearized_kernel = init_reward,init_state, linearized_kernel
                 self.done = False
                 self.max_regret.append(self.init_reward)
                 return self.init_state, None #gymnasium style
@@ -219,16 +188,14 @@ class KernelEnv:
         if action_idx >= 0:
             try:
                 action_to_apply = actions[action_idx - 1]
-                linearized_kernel_copy = ast_str_to_lin(self.linearized_kernel)
+                linearized_kernel_copy = self.linearized_kernel.copy()
                 # Check if action axis is within the shape length of the kernel
                 if action_to_apply.axis >= linearized_kernel_copy.shape_len:
-                    # del linearized_kernel_copy
                     raise ValueError("Invalid action: axis out of bounds.")
                 
                 # Check if the action amount matches the axis size and a zero-change operation exists
                 if (linearized_kernel_copy.full_shape[action_to_apply.axis] == action_to_apply.amt and 
                     Opt(action_to_apply.op, action_to_apply.axis, 0) in actions):
-                    # del linearized_kernel_copy
                     raise ValueError("Invalid action: action amount matches axis size and a zero-change operation exists.")
                 
                 # Tentatively apply the action to a copy to test for workgroup size constraints
@@ -238,20 +205,18 @@ class KernelEnv:
                     if c in {"magenta", "yellow"}: up *= s
                     if c in {"cyan", "green", "white"}: lcl *= s
                 if up > 256 or lcl > 256:
-                    # del linearized_kernel_copy
                     raise ValueError("Invalid action: exceeds workgroup size constraints.")
                 buffer_info = bufs_from_lin(linearized_kernel_copy)
                 
                 # Calculate and return the reward
                 compute_time = time_linearizer(linearized_kernel_copy, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
                 if math.isinf(reward) or np.isnan(reward):
-                    # del linearized_kernel_copy , buffer_info , compute_time
                     raise ValueError("Invalid reward.")
-                self.linearized_kernel , obtained_reward = str(linearized_kernel_copy.ast) , compute_time
+                
+                self.linearized_kernel , obtained_reward = linearized_kernel_copy , compute_time
                 
                 reward = 1 if obtained_reward < min(self.max_regret) else -1
                 # print(linearized_kernel_copy.printbufs())
-                # del buffer_info,compute_time
             except Exception as e: 
                 # print(f"ILLEGAL MOVE ERROR: {e}") 
                 pass
@@ -261,7 +226,6 @@ class KernelEnv:
         if not self.done:
             try:
                 state = np.array(lin_to_feats(linearized_kernel_copy))
-                # del linearized_kernel_copy
             except Exception as e:
                 # print(e)
                 self.done = True
@@ -274,8 +238,7 @@ class KernelEnv:
         self.next_state = state
         self.max_regret.append(obtained_reward  if reward!=self.terminal_reward else self.max_regret[0])
         if not self.inference_mode: self.update_kernel_step(self.kernel_pick_index)
-        if reward >= 1 : self.add_kernels([self.linearized_kernel])
-        # if 'linearized_kernel_copy' in locals(): del linearized_kernel_copy
+        # if reward >= 1 : self.add_kernels([self.linearized_kernel])
         return self.next_state, reward, self.done, None, obtained_reward #gymnasium style
         # return next_state, reward, self.done, info #gym style
 
@@ -290,15 +253,25 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
-import time
-import numpy as np
-import os
 
 torch.set_default_device('cuda')
 
 class PPO(nn.Module):
-    def __init__(self, state_size=4, action_size=2, value_size=1, hidden_space_size=64, learning_rate=0.0001):
+    def __init__(self, state_size=4, 
+                 action_size=2, 
+                 value_size=1, 
+                 hidden_space_size=64, 
+                 learning_rate=0.0001,
+                 gamma=0.97, 
+                 lmbda=0.90, 
+                 eps_clip=0.1, 
+                 K_epoch=2):
         super(PPO, self).__init__()
+        
+        self.gamma = gamma 
+        self.lmbda = lmbda 
+        self.eps_clip = eps_clip
+        self.K_epoch = K_epoch
         self.loss = 0
         self.data = []
         self.hidden_space_size = hidden_space_size
@@ -369,10 +342,10 @@ class PPO(nn.Module):
         first_hidden  = (h1_in.detach(), h2_in.detach())
         second_hidden = (h1_out.detach(), h2_out.detach())
 
-        for i in range(K_epoch):
+        for _ in range(self.K_epoch):
             
             v_prime = self.v(s_prime, second_hidden).squeeze(1)
-            td_target = r + gamma * v_prime * done_mask
+            td_target = r + self.gamma * v_prime * done_mask
             v_s = self.v(s, first_hidden).squeeze(1)
             delta = td_target - v_s
             delta = delta.cpu().detach().numpy()
@@ -380,7 +353,7 @@ class PPO(nn.Module):
             advantage_lst = []
             advantage = 0.0
             for item in delta[::-1]:
-                advantage = gamma * lmbda * advantage + item[0]
+                advantage = self.gamma * self.lmbda * advantage + item[0]
                 advantage_lst.append([advantage])
             advantage_lst.reverse()
             advantage = torch.tensor(advantage_lst, dtype=torch.float)
@@ -389,7 +362,7 @@ class PPO(nn.Module):
             pi_a = pi.squeeze(1).gather(1,a)
             ratio = torch.exp(torch.log(pi_a) - torch.log(prob_a))  # a/b == log(exp(a)-exp(b))
             surr1 = ratio * advantage
-            surr2 = torch.clamp(ratio, 1-eps_clip, 1+eps_clip) * advantage
+            surr2 = torch.clamp(ratio, 1-self.eps_clip, 1+self.eps_clip) * advantage
             loss = -torch.min(surr1, surr2) + F.smooth_l1_loss(v_s, td_target.detach())
             
             self.optimizer.zero_grad()
@@ -399,13 +372,29 @@ class PPO(nn.Module):
         
 
 ############## CYCLE TRAIN/INF ##############
-def training():
-    model = torch.load(model_path) if os.path.exists(model_path) else PPO(state_size=240, action_size=1 + len(actions), value_size=1, hidden_space_size=512)
+def training(learning_rate=0.0003, gamma=0.97,
+             lmbda=0.90, eps_clip=0.1, 
+             K_epoch=2, state_size=240, 
+             action_size=1 + len(actions), 
+             value_size=1, hidden_space_size=512,
+             minimum_batch_size=60, max_steps_limit=60, 
+             episode_count=2000, print_interval=1,
+             path_save_episode = "/home/test1/",model_path= "model_all.pth"):
     
+    model_path = os.path.join(path_save_episode, model_path)
+    model = torch.load(model_path) if os.path.exists(model_path) else PPO(state_size=state_size, 
+                                                                          action_size=action_size, 
+                                                                          value_size=value_size, 
+                                                                          hidden_space_size=hidden_space_size,
+                                                                          learning_rate=learning_rate,
+                                                                          gamma=gamma, 
+                                                                          lmbda=lmbda, 
+                                                                          eps_clip=eps_clip, 
+                                                                          K_epoch=K_epoch)
     # Initialize episode variables
-    current_episode = load_val(default = 0,filename = "state.pkl")
+    current_episode = load_val(default = 0,filename = path_save_episode+"state.pkl")
     episode_scores = []
-    action_count = load_val(default=np.zeros(1 + len(actions)),filename = "action_count.pkl")  # Initialize action count for each action
+    action_count = load_val(default=np.zeros(1 + len(actions)),filename = path_save_episode+"action_count.pkl")  # Initialize action count for each action
     
     while current_episode < episode_count:
         # Reset for new episode
@@ -431,8 +420,7 @@ def training():
             
             model.put_data((state, action, reward, next_state, action_prob.view(-1)[action].item(), hidden_state, new_hidden_state, done))
             del state , hidden_state
-            state = next_state
-            hidden_state = new_hidden_state
+            state , hidden_state = next_state , new_hidden_state
             modified_reward = env.init_reward/orr if reward != env.terminal_reward else -1
             episode_scores.append([modified_reward , done , action])
             action_count[action] += 1  # Update action count
@@ -443,8 +431,8 @@ def training():
         if len(model.data) >= minimum_batch_size:
             model.train_net()
             current_episode += 1
-            save_val(current_episode ,filename= "state.pkl")
-            save_val(action_count ,filename = "action_count.pkl")
+            save_val(current_episode ,filename= path_save_episode+"state.pkl")
+            save_val(action_count ,filename = path_save_episode+"action_count.pkl")
             
             if current_episode % print_interval == 0:
                 avg_score = np.array(split_and_find_max(episode_scores))
@@ -453,18 +441,24 @@ def training():
                 print(pr_loss)
                 print_to_file(path_save_episode + 'state_model_all.txt', f"ep: {current_episode} | <Compute_time : Done : Action>: {[(a[0], a[1], a[2]) for i, a in enumerate(episode_scores)]}")
                 print_to_file(path_save_episode + 'state_model_all.txt', "||||||||||||||||||||||||||")
-                print_to_file(path_save_episode + 'loss_model_all.txt',pr_loss)
+                print_to_file(path_save_episode + 'loss_model_all.txt', pr_loss)
                 episode_scores.clear()
                 torch.save(model, model_path)
                 force_oom()
                 
 
-def inference(available_kernels,max_number_of_step=20):
+def inference(available_kernels,max_number_of_step=20,
+              path_save_episode = "/home/test1/",model_path= "model_all.pth"):
+    
+    model_path = os.path.join(path_save_episode, model_path)
     os.remove(path_save_episode + 'dataset_inference.db') if os.path.exists(path_save_episode + 'dataset_inference.db') else None
-    db = KernelEnv(available_kernels=available_kernels, db_path = path_save_episode + 'dataset_inference.db')
+    db = KernelEnv(available_kernels=available_kernels, db_path = path_save_episode + 'dataset_inference.db', inference_mode=True)
     len_dataset = len(available_kernels)
+    print(len_dataset)
     del available_kernels , db
-    model = torch.load(model_path) if os.path.exists(model_path) else PPO(state_size=240, action_size=1 + len(actions), value_size=1, hidden_space_size=512)
+    force_oom()
+    
+    model = torch.load(model_path) if os.path.exists(model_path) else None
     result_states = []
     action_register= []
     kernels_saver = []
@@ -478,47 +472,85 @@ def inference(available_kernels,max_number_of_step=20):
         while max_moves < max_number_of_step: 
             with torch.no_grad():
                 action_prob, new_hidden_state = model.pi(torch.from_numpy(state).float().cuda(), hidden_state)
-            hidden_state = new_hidden_state
-            action = Categorical(action_prob.view(-1)).sample().item()
+            # np_action = action_prob.view(-1).detach().cpu().numpy()
+            action =np.argmax(action_prob.view(-1).detach().cpu().numpy()) #np.random.choice(len(np_action), p=np_action)
             next_state, reward, done, _, orr = env.step(action)
             reward_state_pairs.append((orr if reward != env.terminal_reward else float("inf") , action, done))
             max_moves += 1
-            state = next_state
+            state , hidden_state = next_state , new_hidden_state
             if done: break
-            
+            force_oom()
         best_reward = min(reward_state_pairs)[0] if min(reward_state_pairs)[0] != float("inf") else env.init_reward
         action = [act for speed, act, done in reward_state_pairs if speed <= max(reward_state_pairs)[0] and [speed , done] != [float("inf"), True]]
         print(f"| Kernel: {kernel} | Initial compute speed: {(env.init_reward)*1000:.3f} ms | Speedup: {env.init_reward / best_reward:.3f}x | New compute speed: {best_reward*1000:.3f} ms | with action: {action} |" )
         
-        result_states.append([kernel ,env.init_reward / best_reward,best_reward ,env.init_reward ]) # replace 0 by env..linearized_kernel
+        result_states.append([kernel ,env.init_reward / best_reward,best_reward ,env.init_reward ])
         action_register.append(action)
         kernels_saver.append(env.linearized_kernel)
-        force_oom()
-    # for i in result_states: print(f"| Kernel number: {i[0]} | speedup: {i[3]:.3f} | initial speed: {i[5]*1000:.3f} ms| new speed: {i[4]*1000:.3f} ms| | action: {i[2]} |")
+        if kernel % 10 == 0: force_oom()
     print(f"|TOTAL SpeedUP: {(np.array(result_states)[:,3].sum()*1000)/(np.array(result_states)[:,2].sum()*1000):.3f}x | Previous Total time: {np.array(result_states)[:,3].sum()*1000:.3f} ms --> New total time: {np.array(result_states)[:,2].sum()*1000:.3f} ms")
-        
-    #return result_states
+    return result_states
 
-############## RUNNER ##############
+
+
 from tinygrad.tensor import Tensor
 from models.resnet import ResNet50
 import argparse
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Training or Inference')
     parser.add_argument('--infer', help='Perform inference', action='store_true')
+    parser.add_argument('--path', help='Path to save episode', default='/user/trial/')
+    parser.add_argument('--max_steps_limit', type=int, default=60)
+    parser.add_argument('--model_name', help='odel name', default='model_all.pth')
+    
+    parser.add_argument('--learning_rate', type=float, default=0.0003)
+    parser.add_argument('--gamma', type=float, default=0.97)
+    parser.add_argument('--lmbda', type=float, default=0.90)
+    parser.add_argument('--eps_clip', type=float, default=0.1)
+    parser.add_argument('--K_epoch', type=int, default=2)
+    parser.add_argument('--state_size', type=int, default=240)
+    parser.add_argument('--action_size', type=int, default=1 + len(actions))
+    parser.add_argument('--value_size', type=int, default=1)
+    parser.add_argument('--hidden_space_size', type=int, default=512)
+    parser.add_argument('--minimum_batch_size', type=int, default=60)
+    parser.add_argument('--episode_count', type=int, default=2000)
+    parser.add_argument('--print_interval', type=int, default=1)
     args = parser.parse_args()
-
+    os.makedirs(args.path, exist_ok=True)
+    
     if args.infer:
         mdl = ResNet50()
         example = Tensor.ones(64, 3, 224, 224)
         available_kernels = extract_ast_kernels(mdl,example)
-        del mdl
-        del example
-        inference(available_kernels)
+        del mdl, example
+        force_oom()
+        result = inference(available_kernels,
+                           max_number_of_step=args.max_steps_limit,
+                           path_save_episode = args.path,
+                           model_path= args.model_name)
     else:
         # Initialize database of the environment
         # if load_val(default = 0,filename = "state.pkl") == 0 :
         dataset = load_worlds(True, True, filter_novariable=True)
-        load_db = KernelEnv(available_kernels=dataset, db_path = path_save_episode + 'dataset_training.db')
+        load_db = KernelEnv(available_kernels=dataset, db_path = args.path + 'dataset_training.db')
         del load_db, dataset
-        training()
+        force_oom()
+
+        training(
+            learning_rate=args.learning_rate,
+            gamma=args.gamma,
+            lmbda=args.lmbda,
+            eps_clip=args.eps_clip,
+            K_epoch=args.K_epoch,
+            state_size=args.state_size,
+            action_size=args.action_size,
+            value_size=args.value_size,
+            hidden_space_size=args.hidden_space_size,
+            minimum_batch_size=args.minimum_batch_size,
+            max_steps_limit=args.max_steps_limit,
+            episode_count=args.episode_count,
+            print_interval=args.print_interval,
+            path_save_episode = args.path,
+            model_path= args.model_name
+        )
