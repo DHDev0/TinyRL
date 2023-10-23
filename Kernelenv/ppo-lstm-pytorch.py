@@ -440,14 +440,6 @@ def training():
             episode_scores.append([modified_reward , done , action])
             action_count[action] += 1  # Update action count
             max_steps += 1
-        env.close()
-        
-        del env
-        env = None
-        gc.collect(0)
-        gc.collect(1)
-        gc.collect(2)
-        torch.cuda.empty_cache()
         
         if len(model.data) >= minimum_batch_size:
             with open("/home/hotmil/ubuntu/TinyRL/saving_model.txt", "w") as f: f.write("")
@@ -503,11 +495,7 @@ def inference(available_kernels,max_number_of_step=20):
         result_states.append([kernel ,env.init_reward / best_reward,best_reward ,env.init_reward ]) # replace 0 by env..linearized_kernel
         action_register.append(action)
         kernels_saver.append(env.linearized_kernel)
-        
-        env.close()
-        del env
-        env = None
-        gc.collect()
+        force_oom()
     # for i in result_states: print(f"| Kernel number: {i[0]} | speedup: {i[3]:.3f} | initial speed: {i[5]*1000:.3f} ms| new speed: {i[4]*1000:.3f} ms| | action: {i[2]} |")
     print(f"|TOTAL SpeedUP: {(np.array(result_states)[:,3].sum()*1000)/(np.array(result_states)[:,2].sum()*1000):.3f}x | Previous Total time: {np.array(result_states)[:,3].sum()*1000:.3f} ms --> New total time: {np.array(result_states)[:,2].sum()*1000:.3f} ms")
         
