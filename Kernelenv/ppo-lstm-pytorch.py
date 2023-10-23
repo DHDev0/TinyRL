@@ -15,6 +15,12 @@ import os; os.makedirs(path_save_episode, exist_ok=True)
 
 ############## TOOLKITS ##############
 
+from tinygrad.helpers import getenv
+def force_oom():
+    if 1 in [getenv("TRITON") ,getenv("CUDA")]:
+        try: large_tensor = Tensor.empty(10000000000000).realize()
+        except Exception as e: pass
+
 def split_and_find_max(list_of_lists):
     stacked_list = []
     temp_list = []
@@ -60,12 +66,7 @@ def load_val(default=0,filename="state.pkl"):
     try: 
         with open(f"{path_save_episode}{filename}", "rb") as f: return pickle.load(f)
     except FileNotFoundError:return default
-
-from tinygrad.helpers import getenv
-def force_oom():
-    if getenv("TRITON") == 1 or getenv("CUDA") == 1:
-        try: large_tensor = Tensor.empty(10000000000000).realize()
-        except Exception as e: pass
+    
 # import os
 # import signal
 # import sys
@@ -112,9 +113,6 @@ class KernelEnv:
         self.init_db()
         if available_kernels is not None: self.add_kernels(available_kernels)
         self.max_global_size= 65536
-
-    def __del__(self):
-        del self
 
     def init_db(self):
         if not os.path.exists(self.db_path):
@@ -198,11 +196,11 @@ class KernelEnv:
                 buffer_info = bufs_from_lin(linearized_kernel)
                 init_reward = time_linearizer(linearized_kernel, buffer_info, allow_test_size=True,should_copy=True, max_global_size=self.max_global_size)
                 if math.isinf(init_reward) or np.isnan(init_reward):
-                    del linearized_kernel , buffer_info , init_reward
+                    # del linearized_kernel , buffer_info , init_reward
                     raise ValueError("Invalid initial time.")
                 init_state = np.array(lin_to_feats(linearized_kernel))
                 self.init_reward , self.init_state, self.linearized_kernel = init_reward,init_state, str(linearized_kernel.ast)
-                del linearized_kernel , buffer_info , init_reward
+                # del linearized_kernel , buffer_info , init_reward
                 self.done = False
                 self.max_regret.append(self.init_reward)
                 return self.init_state, None #gymnasium style
@@ -224,13 +222,13 @@ class KernelEnv:
                 linearized_kernel_copy = ast_str_to_lin(self.linearized_kernel)
                 # Check if action axis is within the shape length of the kernel
                 if action_to_apply.axis >= linearized_kernel_copy.shape_len:
-                    del linearized_kernel_copy
+                    # del linearized_kernel_copy
                     raise ValueError("Invalid action: axis out of bounds.")
                 
                 # Check if the action amount matches the axis size and a zero-change operation exists
                 if (linearized_kernel_copy.full_shape[action_to_apply.axis] == action_to_apply.amt and 
                     Opt(action_to_apply.op, action_to_apply.axis, 0) in actions):
-                    del linearized_kernel_copy
+                    # del linearized_kernel_copy
                     raise ValueError("Invalid action: action amount matches axis size and a zero-change operation exists.")
                 
                 # Tentatively apply the action to a copy to test for workgroup size constraints
@@ -240,20 +238,20 @@ class KernelEnv:
                     if c in {"magenta", "yellow"}: up *= s
                     if c in {"cyan", "green", "white"}: lcl *= s
                 if up > 256 or lcl > 256:
-                    del linearized_kernel_copy
+                    # del linearized_kernel_copy
                     raise ValueError("Invalid action: exceeds workgroup size constraints.")
                 buffer_info = bufs_from_lin(linearized_kernel_copy)
                 
                 # Calculate and return the reward
                 compute_time = time_linearizer(linearized_kernel_copy, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
                 if math.isinf(reward) or np.isnan(reward):
-                    del linearized_kernel_copy , buffer_info , compute_time
+                    # del linearized_kernel_copy , buffer_info , compute_time
                     raise ValueError("Invalid reward.")
                 self.linearized_kernel , obtained_reward = str(linearized_kernel_copy.ast) , compute_time
                 
                 reward = 1 if obtained_reward < min(self.max_regret) else -1
                 # print(linearized_kernel_copy.printbufs())
-                del buffer_info,compute_time
+                # del buffer_info,compute_time
             except Exception as e: 
                 # print(f"ILLEGAL MOVE ERROR: {e}") 
                 pass
@@ -263,7 +261,7 @@ class KernelEnv:
         if not self.done:
             try:
                 state = np.array(lin_to_feats(linearized_kernel_copy))
-                del linearized_kernel_copy
+                # del linearized_kernel_copy
             except Exception as e:
                 # print(e)
                 self.done = True
@@ -277,7 +275,7 @@ class KernelEnv:
         self.max_regret.append(obtained_reward  if reward!=self.terminal_reward else self.max_regret[0])
         if not self.inference_mode: self.update_kernel_step(self.kernel_pick_index)
         if reward >= 1 : self.add_kernels([self.linearized_kernel])
-        if 'linearized_kernel_copy' in locals(): del linearized_kernel_copy
+        # if 'linearized_kernel_copy' in locals(): del linearized_kernel_copy
         return self.next_state, reward, self.done, None, obtained_reward #gymnasium style
         # return next_state, reward, self.done, info #gym style
 
@@ -362,7 +360,6 @@ class PPO(nn.Module):
                                          torch.tensor(s_prime_lst, dtype=torch.float), \
                                          torch.tensor(done_lst, dtype=torch.float), \
                                          torch.tensor(prob_a_lst)
-        del self.data
         self.data = []
         return s,a,r,s_prime, done_mask, prob_a, h_in_lst[0], h_out_lst[0]
 
@@ -399,9 +396,8 @@ class PPO(nn.Module):
             loss.mean().backward(retain_graph=False)
             self.optimizer.step()
         self.loss= loss.mean().detach().cpu().numpy()
-        del s,a,r,s_prime,done_mask, prob_a, (h1_in, h2_in), (h1_out, h2_out)
         
-        
+
 ############## CYCLE TRAIN/INF ##############
 def training():
     model = torch.load(model_path) if os.path.exists(model_path) else PPO(state_size=240, action_size=1 + len(actions), value_size=1, hidden_space_size=512)
@@ -434,15 +430,17 @@ def training():
             next_state, reward, done, _, orr = env.step(action)
             
             model.put_data((state, action, reward, next_state, action_prob.view(-1)[action].item(), hidden_state, new_hidden_state, done))
+            del state , hidden_state
             state = next_state
             hidden_state = new_hidden_state
             modified_reward = env.init_reward/orr if reward != env.terminal_reward else -1
             episode_scores.append([modified_reward , done , action])
             action_count[action] += 1  # Update action count
             max_steps += 1
+        env.close()
+    
         
         if len(model.data) >= minimum_batch_size:
-            with open("/home/hotmil/ubuntu/TinyRL/saving_model.txt", "w") as f: f.write("")
             model.train_net()
             current_episode += 1
             save_val(current_episode ,filename= "state.pkl")
@@ -458,8 +456,8 @@ def training():
                 print_to_file(path_save_episode + 'loss_model_all.txt',pr_loss)
                 episode_scores.clear()
                 torch.save(model, model_path)
-                os.remove("/home/hotmil/ubuntu/TinyRL/saving_model.txt")
                 force_oom()
+                
 
 def inference(available_kernels,max_number_of_step=20):
     os.remove(path_save_episode + 'dataset_inference.db') if os.path.exists(path_save_episode + 'dataset_inference.db') else None
@@ -519,10 +517,8 @@ if __name__ == "__main__":
         inference(available_kernels)
     else:
         # Initialize database of the environment
+        # if load_val(default = 0,filename = "state.pkl") == 0 :
         dataset = load_worlds(True, True, filter_novariable=True)
         load_db = KernelEnv(available_kernels=dataset, db_path = path_save_episode + 'dataset_training.db')
         del load_db, dataset
         training()
-
-
-
