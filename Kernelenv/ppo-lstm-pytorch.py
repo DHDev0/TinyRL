@@ -448,7 +448,6 @@ def training():
         gc.collect(1)
         gc.collect(2)
         torch.cuda.empty_cache()
-        force_oom()
         
         if len(model.data) >= minimum_batch_size:
             with open("/home/hotmil/ubuntu/TinyRL/saving_model.txt", "w") as f: f.write("")
@@ -468,6 +467,7 @@ def training():
                 episode_scores.clear()
                 torch.save(model, model_path)
                 os.remove("/home/hotmil/ubuntu/TinyRL/saving_model.txt")
+                force_oom()
 
 def inference(available_kernels,max_number_of_step=20):
     os.remove(path_save_episode + 'dataset_inference.db') if os.path.exists(path_save_episode + 'dataset_inference.db') else None
