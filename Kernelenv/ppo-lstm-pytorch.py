@@ -425,6 +425,7 @@ def training(learning_rate=0.0003, gamma=0.97,
             episode_scores.append([modified_reward , done , action])
             action_count[action] += 1  # Update action count
             max_steps += 1
+            if math.isinf(model.loss) or np.isnan(model.loss): raise ("gradient vanish")
         env.close()
     
         
@@ -444,7 +445,8 @@ def training(learning_rate=0.0003, gamma=0.97,
                 print_to_file(path_save_episode + 'loss_model_all.txt', pr_loss)
                 episode_scores.clear()
                 torch.save(model, model_path)
-                force_oom()
+                if current_episode % 100 == 0: torch.save(model, os.path.join(path_save_episode, f"{current_episode}_episode_"+model_path))
+            if current_episode % 1 == 0: force_oom()
                 
 
 def inference(available_kernels,max_number_of_step=20,
