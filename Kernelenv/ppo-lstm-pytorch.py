@@ -1,5 +1,4 @@
 ############## TOOLKITS ##############
-
 from tinygrad.tensor import Tensor
 from tinygrad.helpers import getenv
 def force_oom():
@@ -245,15 +244,12 @@ class KernelEnv:
     def close(self):
         pass
 
-
 ############## MODEL ##############
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
-
 torch.set_default_device('cuda')
 
 class PPO(nn.Module):
@@ -370,7 +366,6 @@ class PPO(nn.Module):
             self.optimizer.step()
         self.loss= loss.mean().detach().cpu().numpy()
         
-
 ############## CYCLE TRAIN/INF ##############
 def training(learning_rate=0.0003, gamma=0.97,
              lmbda=0.90, eps_clip=0.1, 
@@ -492,10 +487,8 @@ def inference(available_kernels,max_number_of_step=20,
     print(f"TOTAL SpeedUP: {total_speedup:.3f}x, Previous Total time: {total_time_original:.3f} ms, New total time: {total_time_optimized:.3f} ms")
     return result_states
 
-from tinygrad.tensor import Tensor
-from models.resnet import ResNet50
+#ENTRY POINT
 import argparse
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Training or Inference')
     parser.add_argument('--infer', help='Perform inference', action='store_true')
@@ -519,6 +512,8 @@ if __name__ == "__main__":
     os.makedirs(args.path, exist_ok=True)
     
     if args.infer:
+        from tinygrad.tensor import Tensor
+        from models.resnet import ResNet50
         mdl = ResNet50()
         example = Tensor.ones(64, 3, 224, 224)
         available_kernels = extract_ast_kernels(mdl,example)
