@@ -381,8 +381,8 @@ def training(learning_rate=0.0003, gamma=0.97,
              episode_count=2000, print_interval=1,
              path_save_episode = "/home/test1/",model_path= "model_all.pth"):
     
-    model_path = os.path.join(path_save_episode, model_path)
-    model = torch.load(model_path) if os.path.exists(model_path) else PPO(state_size=state_size, 
+    full_model_path = os.path.join(path_save_episode, model_path)
+    model = torch.load(full_model_path) if os.path.exists(full_model_path) else PPO(state_size=state_size, 
                                                                           action_size=action_size, 
                                                                           value_size=value_size, 
                                                                           hidden_space_size=hidden_space_size,
@@ -444,7 +444,7 @@ def training(learning_rate=0.0003, gamma=0.97,
                 print_to_file(path_save_episode + 'state_model_all.txt', "||||||||||||||||||||||||||")
                 print_to_file(path_save_episode + 'loss_model_all.txt', pr_loss)
                 episode_scores.clear()
-                torch.save(model, model_path)
+                torch.save(model, full_model_path)
                 if current_episode % 100 == 0: torch.save(model, os.path.join(path_save_episode, f"{current_episode}_episode_"+model_path))
             if current_episode % 1 == 0: force_oom()
                 
@@ -458,12 +458,10 @@ def inference(available_kernels,max_number_of_step=20,
     len_dataset = len(available_kernels)
     print(len_dataset)
     del available_kernels , db
-    force_oom()
     
     model = torch.load(model_path) if os.path.exists(model_path) else None
     result_states = []
-    action_register= []
-    kernels_saver = []
+
     for kernel in range(len_dataset):
         env = KernelEnv(db_path = path_save_episode + 'dataset_inference.db', inference_mode=True, index_to_pick=kernel+1, max_n_mouve = 60)
         max_moves = 0
@@ -477,23 +475,22 @@ def inference(available_kernels,max_number_of_step=20,
             # np_action = action_prob.view(-1).detach().cpu().numpy()
             action =np.argmax(action_prob.view(-1).detach().cpu().numpy()) #np.random.choice(len(np_action), p=np_action)
             next_state, reward, done, _, orr = env.step(action)
-            reward_state_pairs.append((orr if reward != env.terminal_reward else float("inf") , action, done))
+            reward_state_pairs.append((orr if reward != env.terminal_reward else float("inf") , action, done,pickle.dumps(env.linearized_kernel)))
             max_moves += 1
             state , hidden_state = next_state , new_hidden_state
             if done: break
-            force_oom()
-        best_reward = min(reward_state_pairs)[0] if min(reward_state_pairs)[0] != float("inf") else env.init_reward
-        action = [act for speed, act, done in reward_state_pairs if speed <= max(reward_state_pairs)[0] and [speed , done] != [float("inf"), True]]
+
+        best_reward,_,_,best_kernel = min(reward_state_pairs) if min(reward_state_pairs)[0] != float("inf") else (env.init_reward,None,True,pickle.dumps(env.get_kernel(env.kernel_pick_index)))
+        action = [act for speed, act, done, kern in reward_state_pairs if speed <= max(reward_state_pairs)[0] and [speed , done] != [float("inf"), True]]
+        result_states.append([kernel ,env.init_reward / best_reward,best_reward ,env.init_reward, best_reward,best_kernel,action ])
         print(f"| Kernel: {kernel} | Initial compute speed: {(env.init_reward)*1000:.3f} ms | Speedup: {env.init_reward / best_reward:.3f}x | New compute speed: {best_reward*1000:.3f} ms | with action: {action} |" )
-        
-        result_states.append([kernel ,env.init_reward / best_reward,best_reward ,env.init_reward ])
-        action_register.append(action)
-        kernels_saver.append(env.linearized_kernel)
         if kernel % 10 == 0: force_oom()
-    print(f"|TOTAL SpeedUP: {(np.array(result_states)[:,3].sum()*1000)/(np.array(result_states)[:,2].sum()*1000):.3f}x | Previous Total time: {np.array(result_states)[:,3].sum()*1000:.3f} ms --> New total time: {np.array(result_states)[:,2].sum()*1000:.3f} ms")
+    # Final summary
+    total_time_original = np.array([i[3] for i in result_states]).sum() * 1000
+    total_time_optimized = np.array([i[2] for i in result_states]).sum() * 1000
+    total_speedup = total_time_original / total_time_optimized
+    print(f"TOTAL SpeedUP: {total_speedup:.3f}x, Previous Total time: {total_time_original:.3f} ms, New total time: {total_time_optimized:.3f} ms")
     return result_states
-
-
 
 from tinygrad.tensor import Tensor
 from models.resnet import ResNet50
