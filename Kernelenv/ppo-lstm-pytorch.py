@@ -1,4 +1,14 @@
 ############## TOOLKITS ##############
+import time
+def format_time(elapsed_time):
+    hours, remainder = divmod(elapsed_time, 3600)
+    minutes, remainder = divmod(remainder, 60)
+    seconds, remainder = divmod(remainder, 1)
+    remainder = remainder * 1e6
+    milliseconds, remainder = divmod(int(remainder), 1000)
+    microseconds = int(remainder)
+    return f"{int(hours):02} H {int(minutes):02} min {int(seconds):02} sec {int(milliseconds):02} ms {int(microseconds):02} us "
+
 from tinygrad.tensor import Tensor
 from tinygrad.helpers import getenv
 def force_oom():
@@ -445,18 +455,20 @@ def training(learning_rate=0.0003, gamma=0.97,
                 
 
 def inference(available_kernels,max_number_of_step=20,
-              path_save_episode = "/home/test1/",model_path= "model_all.pth"):
+              path_save_episode = "/home/test1/",model_path= "model_all.pth",
+              max_trial=3):
     
     model_path = os.path.join(path_save_episode, model_path)
     os.remove(path_save_episode + 'dataset_inference.db') if os.path.exists(path_save_episode + 'dataset_inference.db') else None
     db = KernelEnv(available_kernels=available_kernels, db_path = path_save_episode + 'dataset_inference.db', inference_mode=True)
     len_dataset = len(available_kernels)
-    print(len_dataset)
+    print("Number of kernel: ",len_dataset)
     del available_kernels , db
     
     model = torch.load(model_path) if os.path.exists(model_path) else None
     result_states = []
-
+    cache=[]
+    cyclic_vram_reset=0
     for kernel in range(len_dataset):
         env = KernelEnv(db_path = path_save_episode + 'dataset_inference.db', inference_mode=True, index_to_pick=kernel+1, max_n_mouve = 60)
         max_moves = 0
@@ -468,18 +480,29 @@ def inference(available_kernels,max_number_of_step=20,
             with torch.no_grad():
                 action_prob, new_hidden_state = model.pi(torch.from_numpy(state).float().cuda(), hidden_state)
             # np_action = action_prob.view(-1).detach().cpu().numpy()
-            action =np.argmax(action_prob.view(-1).detach().cpu().numpy()) #np.random.choice(len(np_action), p=np_action)
-            next_state, reward, done, _, orr = env.step(action)
-            reward_state_pairs.append((orr if reward != env.terminal_reward else float("inf") , action, done,pickle.dumps(env.linearized_kernel)))
+            act_sort = np.sort(action_prob.flatten().detach().cpu().numpy())[::-1]
+            act_argsort = action_prob.flatten().detach().cpu().numpy().argsort()[::-1]#action_prob.argsort()[-max_trial:][::-1]#np.argmax(action_prob.view(-1).detach().cpu().numpy()) #np.random.choice(len(np_action), p=np_action)
+            initv = env.linearized_kernel
+            for action in act_argsort:
+                env.linearized_kernel = initv
+                next_state, reward, done, _, orr = env.step(action)
+                env.done = False
+                cache.append((orr if reward != env.terminal_reward else float("inf") , action, done,pickle.dumps(env.linearized_kernel),next_state))
+                # if sum(not i[2] for i in cache) >= 3 and act_sort[:-np.argmax(act_argsort == action)].sum() > act_sort.sum()/2 or act_argsort[5]==action: break
+                if act_argsort[max_trial]==action or done == False : break
+            cyclic_vram_reset = force_oom() or 0 if cyclic_vram_reset >= 60 else cyclic_vram_reset + len(cache)
+            done = min(cache)[2]
+            reward_state_pairs.append(min(cache)[:-1])
+            state , hidden_state = min(cache)[-1] , new_hidden_state
             max_moves += 1
-            state , hidden_state = next_state , new_hidden_state
+            cache=[]
             if done: break
+
 
         best_reward,_,_,best_kernel = min(reward_state_pairs) if min(reward_state_pairs)[0] != float("inf") else (env.init_reward,None,True,pickle.dumps(env.get_kernel(env.kernel_pick_index)))
         action = [act for speed, act, done, kern in reward_state_pairs if speed <= max(reward_state_pairs)[0] and [speed , done] != [float("inf"), True]]
         result_states.append([kernel ,env.init_reward / best_reward,best_reward ,env.init_reward, best_reward,best_kernel,action ])
         print(f"| Kernel: {kernel} | Initial compute speed: {(env.init_reward)*1000:.3f} ms | Speedup: {env.init_reward / best_reward:.3f}x | New compute speed: {best_reward*1000:.3f} ms | with action: {action} |" )
-        if kernel % 1 == 0: force_oom()
     # Final summary
     total_time_original = np.array([i[3] for i in result_states]).sum() * 1000
     total_time_optimized = np.array([i[2] for i in result_states]).sum() * 1000
@@ -495,6 +518,7 @@ if __name__ == "__main__":
     parser.add_argument('--path', help='Path to save episode', default='/user/trial/')
     parser.add_argument('--max_steps_limit', type=int, default=60)
     parser.add_argument('--model_name', help='odel name', default='model_all.pth')
+    parser.add_argument('--max_inference_trial', type=int, default=3)
     
     parser.add_argument('--learning_rate', type=float, default=0.0003)
     parser.add_argument('--gamma', type=float, default=0.97)
@@ -519,10 +543,13 @@ if __name__ == "__main__":
         available_kernels = extract_ast_kernels(mdl,example)
         del mdl, example
         force_oom()
+        start_time = time.time()
         result = inference(available_kernels,
                            max_number_of_step=args.max_steps_limit,
                            path_save_episode = args.path,
-                           model_path= args.model_name)
+                           model_path = args.model_name,
+                           max_trial = args.max_inference_trial)
+        print(f"Inference elapsed time: {format_time(time.time() - start_time)}")
     else:
         # Initialize database of the environment
         # if load_val(default = 0,filename = "state.pkl") == 0 :
