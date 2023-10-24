@@ -1,0 +1,69 @@
+
+
+
+TRAINING 1000 cycles
+timizing for CUDA
+Number of kernel:  60
+| Kernel: 0 | Initial compute speed: 6573.523 ms | Speedup: 89.486x | New compute speed: 73.459 ms | with action: [41, 41, 39, 46, 39, 7, 2] |
+| Kernel: 1 | Initial compute speed: 469.762 ms | Speedup: 19.383x | New compute speed: 24.236 ms | with action: [41, 41, 41, 41] |
+| Kernel: 2 | Initial compute speed: 155.451 ms | Speedup: 4.491x | New compute speed: 34.615 ms | with action: [41, 41, 41, 41] |
+| Kernel: 3 | Initial compute speed: 1324.089 ms | Speedup: 10.491x | New compute speed: 126.210 ms | with action: [41, 41, 46, 51, 12, 12] |
+| Kernel: 4 | Initial compute speed: 8571.847 ms | Speedup: 15.096x | New compute speed: 567.841 ms | with action: [41, 39, 46, 46, 2, 2] |
+| Kernel: 5 | Initial compute speed: 5297.406 ms | Speedup: 9.473x | New compute speed: 559.195 ms | with action: [41, 41, 39, 46] |
+| Kernel: 6 | Initial compute speed: 5332.009 ms | Speedup: 11.112x | New compute speed: 479.841 ms | with action: [41, 41, 46, 46, 12, 12, 12] |
+| Kernel: 7 | Initial compute speed: 10432.282 ms | Speedup: 13.030x | New compute speed: 800.625 ms | with action: [41, 41, 46] |
+| Kernel: 8 | Initial compute speed: 8571.847 ms | Speedup: 15.096x | New compute speed: 567.841 ms | with action: [41, 39, 46, 46, 2, 2] |
+| Kernel: 9 | Initial compute speed: 5352.980 ms | Speedup: 9.138x | New compute speed: 585.777 ms | with action: [41, 41, 39, 46] |
+| Kernel: 10 | Initial compute speed: 10432.282 ms | Speedup: 13.030x | New compute speed: 800.625 ms | with action: [41, 41, 46] |
+| Kernel: 11 | Initial compute speed: 8571.847 ms | Speedup: 15.096x | New compute speed: 567.841 ms | with action: [41, 39, 46, 46, 2, 2] |
+| Kernel: 12 | Initial compute speed: 5352.980 ms | Speedup: 9.138x | New compute speed: 585.777 ms | with action: [41, 41, 39, 46] |
+| Kernel: 13 | Initial compute speed: 14099.677 ms | Speedup: 8.700x | New compute speed: 1620.640 ms | with action: [41, 41, 46] |
+| Kernel: 14 | Initial compute speed: 8038.384 ms | Speedup: 20.584x | New compute speed: 390.508 ms | with action: [41, 39, 46, 46] |
+| Kernel: 15 | Initial compute speed: 18025.021 ms | Speedup: 4.357x | New compute speed: 4137.419 ms | with action: [46] |
+| Kernel: 16 | Initial compute speed: 7010.255 ms | Speedup: 12.000x | New compute speed: 584.180 ms | with action: [41, 41, 39, 46] |
+| Kernel: 17 | Initial compute speed: 7647.134 ms | Speedup: 13.557x | New compute speed: 564.056 ms | with action: [41, 41, 46] |
+| Kernel: 18 | Initial compute speed: 8973.976 ms | Speedup: 11.875x | New compute speed: 755.720 ms | with action: [41, 39, 39, 46, 46] |
+| Kernel: 19 | Initial compute speed: 6968.312 ms | Speedup: 12.002x | New compute speed: 580.616 ms | with action: [41, 41, 39, 46] |
+| Kernel: 20 | Initial compute speed: 7647.134 ms | Speedup: 13.557x | New compute speed: 564.056 ms | with action: [41, 41, 46] |
+| Kernel: 21 | Initial compute speed: 8973.976 ms | Speedup: 11.875x | New compute speed: 755.720 ms | with action: [41, 39, 39, 46, 46] |
+| Kernel: 22 | Initial compute speed: 6968.312 ms | Speedup: 12.002x | New compute speed: 580.616 ms | with action: [41, 41, 39, 46] |
+| Kernel: 23 | Initial compute speed: 7647.134 ms | Speedup: 13.557x | New compute speed: 564.056 ms | with action: [41, 41, 46] |
+| Kernel: 24 | Initial compute speed: 8973.976 ms | Speedup: 11.875x | New compute speed: 755.720 ms | with action: [41, 39, 39, 46, 46] |
+| Kernel: 25 | Initial compute speed: 6968.312 ms | Speedup: 12.002x | New compute speed: 580.616 ms | with action: [41, 41, 39, 46] |
+| Kernel: 26 | Initial compute speed: 15608.315 ms | Speedup: 13.717x | New compute speed: 1137.902 ms | with action: [41, 41, 46] |
+| Kernel: 27 | Initial compute speed: 9313.387 ms | Speedup: 14.226x | New compute speed: 654.694 ms | with action: [41, 39, 46, 46, 2] |
+| Kernel: 28 | Initial compute speed: 26081.756 ms | Speedup: 4.209x | New compute speed: 6196.363 ms | with action: [46] |
+| Kernel: 29 | Initial compute speed: 3377.725 ms | Speedup: 6.012x | New compute speed: 561.813 ms | with action: [41, 41, 39, 46] |
+| Kernel: 30 | Initial compute speed: 10634.724 ms | Speedup: 8.196x | New compute speed: 1297.537 ms | with action: [41, 41, 39] |
+| Kernel: 31 | Initial compute speed: 8811.315 ms | Speedup: 13.577x | New compute speed: 648.976 ms | with action: [41, 39, 46, 46, 2] |
+| Kernel: 32 | Initial compute speed: 6621.241 ms | Speedup: 11.772x | New compute speed: 562.452 ms | with action: [41, 41, 39, 46] |
+| Kernel: 33 | Initial compute speed: 10634.724 ms | Speedup: 8.196x | New compute speed: 1297.537 ms | with action: [41, 41, 39] |
+| Kernel: 34 | Initial compute speed: 8811.315 ms | Speedup: 13.577x | New compute speed: 648.976 ms | with action: [41, 39, 46, 46, 2] |
+| Kernel: 35 | Initial compute speed: 6621.241 ms | Speedup: 11.772x | New compute speed: 562.452 ms | with action: [41, 41, 39, 46] |
+| Kernel: 36 | Initial compute speed: 10634.724 ms | Speedup: 8.196x | New compute speed: 1297.537 ms | with action: [41, 41, 39] |
+| Kernel: 37 | Initial compute speed: 8811.315 ms | Speedup: 13.577x | New compute speed: 648.976 ms | with action: [41, 39, 46, 46, 2] |
+| Kernel: 38 | Initial compute speed: 6621.241 ms | Speedup: 11.772x | New compute speed: 562.452 ms | with action: [41, 41, 39, 46] |
+| Kernel: 39 | Initial compute speed: 10634.724 ms | Speedup: 8.196x | New compute speed: 1297.537 ms | with action: [41, 41, 39] |
+| Kernel: 40 | Initial compute speed: 8811.315 ms | Speedup: 13.577x | New compute speed: 648.976 ms | with action: [41, 39, 46, 46, 2] |
+| Kernel: 41 | Initial compute speed: 6621.241 ms | Speedup: 11.772x | New compute speed: 562.452 ms | with action: [41, 41, 39, 46] |
+| Kernel: 42 | Initial compute speed: 10634.724 ms | Speedup: 8.196x | New compute speed: 1297.537 ms | with action: [41, 41, 39] |
+| Kernel: 43 | Initial compute speed: 8811.315 ms | Speedup: 13.577x | New compute speed: 648.976 ms | with action: [41, 39, 46, 46, 2] |
+| Kernel: 44 | Initial compute speed: 6621.241 ms | Speedup: 11.772x | New compute speed: 562.452 ms | with action: [41, 41, 39, 46] |
+| Kernel: 45 | Initial compute speed: 21372.338 ms | Speedup: 8.294x | New compute speed: 2576.852 ms | with action: [41, 41, 39] |
+| Kernel: 46 | Initial compute speed: 8376.910 ms | Speedup: 13.935x | New compute speed: 601.135 ms | with action: [41, 39, 46, 46, 2] |
+| Kernel: 47 | Initial compute speed: 22020.357 ms | Speedup: 3.662x | New compute speed: 6013.846 ms | with action: [46] |
+| Kernel: 48 | Initial compute speed: 3434.611 ms | Speedup: 6.588x | New compute speed: 521.376 ms | with action: [41, 41, 39, 46] |
+| Kernel: 49 | Initial compute speed: 7990.805 ms | Speedup: 7.789x | New compute speed: 1025.852 ms | with action: [41, 41, 39] |
+| Kernel: 50 | Initial compute speed: 9072.574 ms | Speedup: 13.189x | New compute speed: 687.872 ms | with action: [41, 39, 46] |
+| Kernel: 51 | Initial compute speed: 7571.112 ms | Speedup: 14.504x | New compute speed: 521.996 ms | with action: [41, 41, 39, 46] |
+| Kernel: 52 | Initial compute speed: 7990.805 ms | Speedup: 7.789x | New compute speed: 1025.852 ms | with action: [41, 41, 39] |
+| Kernel: 53 | Initial compute speed: 9072.574 ms | Speedup: 13.189x | New compute speed: 687.872 ms | with action: [41, 39, 46] |
+| Kernel: 54 | Initial compute speed: 7518.290 ms | Speedup: 14.484x | New compute speed: 519.082 ms | with action: [41, 41, 39, 46] |
+| Kernel: 55 | Initial compute speed: 21.897 ms | Speedup: 4.558x | New compute speed: 4.805 ms | with action: [41, 39] |
+| Kernel: 56 | Initial compute speed: 533.382 ms | Speedup: 74.284x | New compute speed: 7.180 ms | with action: [41, 41, 41, 41, 2, 7] |
+| Kernel: 57 | Initial compute speed: 0.395 ms | Speedup: 1.024x | New compute speed: 0.386 ms | with action: [39] |
+| Kernel: 58 | Initial compute speed: 1.075 ms | Speedup: 2.436x | New compute speed: 0.441 ms | with action: [41] |
+| Kernel: 59 | Initial compute speed: 0.613 ms | Speedup: 16.189x | New compute speed: 0.038 ms | with action: [41, 41, 46, 7] |
+TOTAL SpeedUP: 9.048x, Previous Total time: 484075.230 ms, New total time: 53497.992 ms
+Inference elapsed time: 00 H 00 min 10 sec 300 ms 449 us 
+
