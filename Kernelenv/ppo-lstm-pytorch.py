@@ -484,7 +484,7 @@ def inference(available_kernels,max_number_of_step=20,
         action = [act for speed, act, done, kern in reward_state_pairs if speed <= max(reward_state_pairs)[0] and [speed , done] != [float("inf"), True]]
         result_states.append([kernel ,env.init_reward / best_reward,best_reward ,env.init_reward, best_reward,best_kernel,action ])
         print(f"| Kernel: {kernel} | Initial compute speed: {(env.init_reward)*1000:.3f} ms | Speedup: {env.init_reward / best_reward:.3f}x | New compute speed: {best_reward*1000:.3f} ms | with action: {action} |" )
-        if kernel % 10 == 0: force_oom()
+        if kernel % 1 == 0: force_oom()
     # Final summary
     total_time_original = np.array([i[3] for i in result_states]).sum() * 1000
     total_time_optimized = np.array([i[2] for i in result_states]).sum() * 1000
