@@ -425,12 +425,12 @@ def training(learning_rate=0.0003, gamma=0.97,
             episode_scores.append([modified_reward , done , action])
             action_count[action] += 1  # Update action count
             max_steps += 1
-            if math.isinf(model.loss) or np.isnan(model.loss): raise ("gradient vanish")
         env.close()
     
         
         if len(model.data) >= minimum_batch_size:
             model.train_net()
+            if math.isinf(model.loss) or np.isnan(model.loss): raise ("gradient vanish")
             current_episode += 1
             save_val(current_episode ,filename= path_save_episode+"state.pkl")
             save_val(action_count ,filename = path_save_episode+"action_count.pkl")
