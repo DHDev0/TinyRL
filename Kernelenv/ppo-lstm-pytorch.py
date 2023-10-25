@@ -1,4 +1,23 @@
 ############## TOOLKITS ##############
+import cProfile
+import pstats
+import time
+def profile_function(func):
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        profiler = cProfile.Profile()
+        profiler.enable()
+        result = func(*args, **kwargs)
+        profiler.disable()
+        elapsed_time = time.time() - start_time
+        if elapsed_time >= 1:  # Save only if elapsed time is 1 second or more
+            with open("/home/usr/profile_stats.txt", "a") as f:
+                stats = pstats.Stats(profiler, stream=f)
+                stats.sort_stats('cumulative')
+                stats.print_stats()
+        return result
+    return wrapper
+
 import time
 def format_time(elapsed_time):
     hours, remainder = divmod(elapsed_time, 3600)
@@ -8,6 +27,7 @@ def format_time(elapsed_time):
     milliseconds, remainder = divmod(int(remainder), 1000)
     microseconds = int(remainder)
     return f"{int(hours):02} H {int(minutes):02} min {int(seconds):02} sec {int(milliseconds):02} ms {int(microseconds):02} us "
+
 
 from tinygrad.tensor import Tensor
 from tinygrad.helpers import getenv
@@ -68,7 +88,6 @@ from tinygrad.features.search import actions, bufs_from_lin, time_linearizer
 from extra.optimization.helpers import load_worlds, ast_str_to_lin, lin_to_feats
 from tinygrad.codegen.optimizer import Opt
 
-
 class KernelEnv:
     def __init__(self,
                  available_kernels = None,
@@ -124,7 +143,6 @@ class KernelEnv:
                 if not isinstance(e, sqlite3.OperationalError): print(f'An exception occurred: {e}')
                 if retry == self.max_retries - 1: raise
                 time.sleep(0.1)
-                
 
     def add_kernels(self, kernel_list):
         for kernel in kernel_list:
@@ -133,6 +151,7 @@ class KernelEnv:
                 res = self.query_db("SELECT * FROM kernels WHERE kernel_data = ?", (serialized_kernel,))
                 if len(res) == 0: self.update_db("INSERT INTO kernels (kernel_data, last_num_steps, total_visits) VALUES (?, 0, 0)", (serialized_kernel,))
             else: self.update_db("INSERT INTO kernels (kernel_data, last_num_steps, total_visits) VALUES (?, 0, 0)", (serialized_kernel,))
+            
     def priority_game(self):
         data = self.query_db("SELECT id, last_num_steps, total_visits FROM kernels")
         active_indices = np.array([row[0] for row in data])
@@ -160,7 +179,7 @@ class KernelEnv:
 
     def count_kernels(self):
         return self.query_db("SELECT COUNT(*) FROM kernels")[0]
-
+    
     def reset(self):
         while True:
             if self.inference_mode:
@@ -188,8 +207,7 @@ class KernelEnv:
                 self.delete_kernel(self.kernel_pick_index)
                 print(f"Number of active kernels after removal: {self.count_kernels()}")
                 
-    
-    def step(self, action_idx):
+    def step(self, action_idx,no_reward=False):
         reward = self.terminal_reward
         obtained_reward = self.terminal_reward
         if self.done:
@@ -215,16 +233,17 @@ class KernelEnv:
                     if c in {"cyan", "green", "white"}: lcl *= s
                 if up > 256 or lcl > 256:
                     raise ValueError("Invalid action: exceeds workgroup size constraints.")
-                buffer_info = bufs_from_lin(linearized_kernel_copy)
+                if not no_reward:
+                    buffer_info = bufs_from_lin(linearized_kernel_copy)
+                    
+                    # Calculate and return the reward
+                    compute_time = time_linearizer(linearized_kernel_copy, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
+                    if math.isinf(reward) or np.isnan(reward):
+                        raise ValueError("Invalid reward.")
                 
-                # Calculate and return the reward
-                compute_time = time_linearizer(linearized_kernel_copy, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
-                if math.isinf(reward) or np.isnan(reward):
-                    raise ValueError("Invalid reward.")
-                
-                self.linearized_kernel , obtained_reward = linearized_kernel_copy , compute_time
-                
-                reward = 1 if obtained_reward < min(self.max_regret) else -1
+                    self.linearized_kernel , obtained_reward = linearized_kernel_copy , compute_time
+                    
+                    reward = 1 if obtained_reward < min(self.max_regret) else -1
                 # print(linearized_kernel_copy.printbufs())
             except Exception as e: 
                 # print(f"ILLEGAL MOVE ERROR: {e}") 
@@ -232,7 +251,7 @@ class KernelEnv:
 
         self.done = action_idx == 0 or reward == self.terminal_reward
         state = self.next_state if hasattr(self, 'next_state') else self.init_state
-        if not self.done:
+        if not self.done or no_reward:
             try:
                 state = np.array(lin_to_feats(linearized_kernel_copy))
             except Exception as e:
@@ -254,12 +273,13 @@ class KernelEnv:
     def close(self):
         pass
 
-############## MODEL ##############
+############## MODEL #############
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Categorical
+
 torch.set_default_device('cuda')
 
 class PPO(nn.Module):
@@ -376,6 +396,7 @@ class PPO(nn.Module):
             self.optimizer.step()
         self.loss= loss.mean().detach().cpu().numpy()
         
+
 ############## CYCLE TRAIN/INF ##############
 def training(learning_rate=0.0003, gamma=0.97,
              lmbda=0.90, eps_clip=0.1, 
@@ -422,7 +443,6 @@ def training(learning_rate=0.0003, gamma=0.97,
             action = Categorical(torch.tensor(ucb_values/ucb_values.sum(), dtype=torch.float32, device='cpu')).sample().item() #np.argmax(ucb_values)
             # Take action and observe next state and reward
             next_state, reward, done, _, orr = env.step(action)
-            
             model.put_data((state, action, reward, next_state, action_prob.view(-1)[action].item(), hidden_state, new_hidden_state, done))
             del state , hidden_state
             state , hidden_state = next_state , new_hidden_state
@@ -430,12 +450,13 @@ def training(learning_rate=0.0003, gamma=0.97,
             episode_scores.append([modified_reward , done , action])
             action_count[action] += 1  # Update action count
             max_steps += 1
-        env.close()
+
+        force_oom()
     
         
         if len(model.data) >= minimum_batch_size:
             model.train_net()
-            if math.isinf(model.loss) or np.isnan(model.loss): raise Exception("Gradient vanish")
+            if math.isinf(model.loss) or np.isnan(model.loss): raise ("gradient vanish")
             current_episode += 1
             save_val(current_episode ,filename= path_save_episode+"state.pkl")
             save_val(action_count ,filename = path_save_episode+"action_count.pkl")
@@ -451,12 +472,12 @@ def training(learning_rate=0.0003, gamma=0.97,
                 episode_scores.clear()
                 torch.save(model, full_model_path)
                 if current_episode % 100 == 0: torch.save(model, os.path.join(path_save_episode, f"{current_episode}_episode_"+model_path))
-            if current_episode % 1 == 0: force_oom()
+            # if current_episode % 1 == 0: force_oom()
                 
 
 def inference(available_kernels,max_number_of_step=20,
               path_save_episode = "/home/test1/",model_path= "model_all.pth",
-              max_trial=3):
+              max_trial = 3, strategies = "topk+fusmedian"):
     
     model_path = os.path.join(path_save_episode, model_path)
     os.remove(path_save_episode + 'dataset_inference.db') if os.path.exists(path_save_episode + 'dataset_inference.db') else None
@@ -468,7 +489,7 @@ def inference(available_kernels,max_number_of_step=20,
     model = torch.load(model_path) if os.path.exists(model_path) else None
     result_states = []
     cache=[]
-    cyclic_vram_reset=0
+    value_cache=[]
     for kernel in range(len_dataset):
         env = KernelEnv(db_path = path_save_episode + 'dataset_inference.db', inference_mode=True, index_to_pick=kernel+1, max_n_mouve = 60)
         max_moves = 0
@@ -477,25 +498,54 @@ def inference(available_kernels,max_number_of_step=20,
         hidden_state = (torch.zeros([1, 1, model.hidden_space_lstm_size], dtype=torch.float),
                         torch.zeros([1, 1, model.hidden_space_lstm_size], dtype=torch.float))
         while max_moves < max_number_of_step: 
+            #get policy action distribution
             with torch.no_grad():
                 action_prob, new_hidden_state = model.pi(torch.from_numpy(state).float().cuda(), hidden_state)
-            # np_action = action_prob.view(-1).detach().cpu().numpy()
-            act_sort = np.sort(action_prob.flatten().detach().cpu().numpy())[::-1]
-            act_argsort = action_prob.flatten().detach().cpu().numpy().argsort()[::-1]#action_prob.argsort()[-max_trial:][::-1]#np.argmax(action_prob.view(-1).detach().cpu().numpy()) #np.random.choice(len(np_action), p=np_action)
-            initv = env.linearized_kernel
-            for action in act_argsort:
-                env.linearized_kernel = initv
+            # Convert to numpy and sort
+            action_prob_np = action_prob.detach().flatten().cpu().numpy()
+            sorted_indices = action_prob_np.argsort()[::-1]  # Sort in descending order
+            
+            #get value action distribution
+            initk = env.linearized_kernel
+            value_cache = []
+            for action in sorted_indices:
+                env.linearized_kernel = initk
+                next_state, _, _, _, _ = env.step(action, no_reward=True)
+                env.done = False
+                next_action_values = model.v(torch.from_numpy(next_state).float().cuda(), new_hidden_state)
+                value_cache.append(next_action_values.detach().flatten().cpu().numpy()[0])
+            # Convert to numpy and sort
+            value_sort_indices = (np.argsort(-1*np.array(value_cache))[::-1])[:20]
+            final_indices = sorted_indices[value_sort_indices]
+            
+            #pick strategy
+            if strategies == "best_max_trial_policy":
+                strategy = sorted_indices[:max_trial]
+            if strategies == "best_max_trial_value":
+                strategy = (final_indices[np.argsort(action_prob_np[final_indices])][::-1])[:max_trial]
+            if strategies == "topk+fusmedian": # need a general way to define the slice parameter
+                common_elements_np = np.intersect1d(final_indices, sorted_indices[:20])
+                weights = len(final_indices) + len(sorted_indices[:20]) - np.searchsorted(final_indices, common_elements_np) - np.searchsorted(sorted_indices[:20], common_elements_np)
+                sorted_common_elements = common_elements_np[np.argsort(-weights)].tolist()[:10]
+                obvious_solution= sorted_indices[:max_trial]
+                median_idx = len(sorted_common_elements) // 2
+                median_and_neighbors = sorted_common_elements[max(0, median_idx-1) : median_idx+2]
+                depth_solution = np.setdiff1d(median_and_neighbors, obvious_solution)
+                strategy = np.concatenate((obvious_solution[:max_trial], depth_solution))
+
+            for action in strategy:
+                env.linearized_kernel = initk
                 next_state, reward, done, _, orr = env.step(action)
                 env.done = False
-                cache.append((orr if reward != env.terminal_reward else float("inf") , action, done,pickle.dumps(env.linearized_kernel),next_state))
-                # if sum(not i[2] for i in cache) >= 3 and act_sort[:-np.argmax(act_argsort == action)].sum() > act_sort.sum()/2 or act_argsort[5]==action: break
-                if act_argsort[max_trial]==action or done == False : break
-            cyclic_vram_reset = force_oom() or 0 if cyclic_vram_reset >= 60 else cyclic_vram_reset + len(cache)
+                cache.append((orr if reward != env.terminal_reward else float("inf") , action, done,env.linearized_kernel,next_state))
+                if not done: break
+            env.linearized_kernel = min(cache)[-2]
             done = min(cache)[2]
             reward_state_pairs.append(min(cache)[:-1])
             state , hidden_state = min(cache)[-1] , new_hidden_state
             max_moves += 1
             cache=[]
+            value_cache=[]
             if done: break
 
 
@@ -510,14 +560,17 @@ def inference(available_kernels,max_number_of_step=20,
     print(f"TOTAL SpeedUP: {total_speedup:.3f}x, Previous Total time: {total_time_original:.3f} ms, New total time: {total_time_optimized:.3f} ms")
     return result_states
 
+
+
+
 #ENTRY POINT
 import argparse
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Training or Inference')
     parser.add_argument('--infer', help='Perform inference', action='store_true')
-    parser.add_argument('--path', help='Path to save episode', default='/user/trial/')
+    parser.add_argument('--path', help='Path to save episode', default='/home/usr/ubuntu/TinyRL/test3/')
     parser.add_argument('--max_steps_limit', type=int, default=60)
-    parser.add_argument('--model_name', help='odel name', default='model_all.pth')
+    parser.add_argument('--model_name', help='model name', default='model_all.pth')
     parser.add_argument('--max_inference_trial', type=int, default=3)
     
     parser.add_argument('--learning_rate', type=float, default=0.0003)
@@ -526,9 +579,9 @@ if __name__ == "__main__":
     parser.add_argument('--eps_clip', type=float, default=0.1)
     parser.add_argument('--K_epoch', type=int, default=2)
     parser.add_argument('--state_size', type=int, default=240)
-    parser.add_argument('--action_size', type=int, default=1 + len(actions))
+    parser.add_argument('--action_size', type=int, default=1 + len(actions))  # Assuming actions is defined elsewhere
     parser.add_argument('--value_size', type=int, default=1)
-    parser.add_argument('--hidden_space_size', type=int, default=512)
+    parser.add_argument('--hidden_space_size', type=int, default=1024)
     parser.add_argument('--minimum_batch_size', type=int, default=60)
     parser.add_argument('--episode_count', type=int, default=2000)
     parser.add_argument('--print_interval', type=int, default=1)
@@ -543,6 +596,7 @@ if __name__ == "__main__":
         available_kernels = extract_ast_kernels(mdl,example)
         del mdl, example
         force_oom()
+        
         start_time = time.time()
         result = inference(available_kernels,
                            max_number_of_step=args.max_steps_limit,
@@ -575,3 +629,5 @@ if __name__ == "__main__":
             path_save_episode = args.path,
             model_path= args.model_name
         )
+
+        
