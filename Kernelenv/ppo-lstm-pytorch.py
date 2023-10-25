@@ -435,7 +435,7 @@ def training(learning_rate=0.0003, gamma=0.97,
         
         if len(model.data) >= minimum_batch_size:
             model.train_net()
-            if math.isinf(model.loss) or np.isnan(model.loss): raise ("gradient vanish")
+            if math.isinf(model.loss) or np.isnan(model.loss): raise Exception("Gradient vanish")
             current_episode += 1
             save_val(current_episode ,filename= path_save_episode+"state.pkl")
             save_val(action_count ,filename = path_save_episode+"action_count.pkl")
