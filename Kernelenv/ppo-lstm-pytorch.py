@@ -1,4 +1,5 @@
 ############## TOOLKITS ##############
+import re
 import cProfile
 import pstats
 import time
@@ -477,19 +478,20 @@ def training(learning_rate=0.0003, gamma=0.97,
 
 def inference(available_kernels,max_number_of_step=20,
               path_save_episode = "/home/test1/",model_path= "model_all.pth",
-              max_trial = 3, strategies = "topk+fusmedian"):
+              max_trial = 3, strategies = "best_max_trial_policy"):
     
     model_path = os.path.join(path_save_episode, model_path)
     os.remove(path_save_episode + 'dataset_inference.db') if os.path.exists(path_save_episode + 'dataset_inference.db') else None
     db = KernelEnv(available_kernels=available_kernels, db_path = path_save_episode + 'dataset_inference.db', inference_mode=True)
     len_dataset = len(available_kernels)
-    print("Number of kernel: ",len_dataset)
     del available_kernels , db
     
     model = torch.load(model_path) if os.path.exists(model_path) else None
     result_states = []
     cache=[]
     value_cache=[]
+    remainder=0
+    print("Strategy: ",strategies)
     for kernel in range(len_dataset):
         env = KernelEnv(db_path = path_save_episode + 'dataset_inference.db', inference_mode=True, index_to_pick=kernel+1, max_n_mouve = 60)
         max_moves = 0
@@ -539,6 +541,7 @@ def inference(available_kernels,max_number_of_step=20,
                 env.done = False
                 cache.append((orr if reward != env.terminal_reward else float("inf") , action, done,env.linearized_kernel,next_state))
                 if not done: break
+            # print(F"Strategy : {strategy} , selected action: {min(cache)[1]} , mouve number: {max_moves} , end game state = {min(cache)[2]}")
             env.linearized_kernel = min(cache)[-2]
             done = min(cache)[2]
             reward_state_pairs.append(min(cache)[:-1])
@@ -547,13 +550,17 @@ def inference(available_kernels,max_number_of_step=20,
             cache=[]
             value_cache=[]
             if done: break
-
-
+            
+        if kernel % 1 == 0: force_oom()
         best_reward,_,_,best_kernel = min(reward_state_pairs) if min(reward_state_pairs)[0] != float("inf") else (env.init_reward,None,True,pickle.dumps(env.get_kernel(env.kernel_pick_index)))
-        action = [act for speed, act, done, kern in reward_state_pairs if speed <= max(reward_state_pairs)[0] and [speed , done] != [float("inf"), True]]
-        result_states.append([kernel ,env.init_reward / best_reward,best_reward ,env.init_reward, best_reward,best_kernel,action ])
-        print(f"| Kernel: {kernel} | Initial compute speed: {(env.init_reward)*1000:.3f} ms | Speedup: {env.init_reward / best_reward:.3f}x | New compute speed: {best_reward*1000:.3f} ms | with action: {action} |" )
-    # Final summary
+        if best_kernel is not None and not isinstance(best_kernel, bytes):
+            action = [act for speed, act, done, kern in reward_state_pairs if speed <= max(reward_state_pairs)[0] and [speed , done] != [float("inf"), True]]
+            result_states.append([kernel ,env.init_reward / best_reward,best_reward ,env.init_reward, best_reward,best_kernel,action ])
+            kernel_shape = re.sub(' +', '_', result_states[-1][-2].colored_shape()).strip('_')
+            kernel_shape = re.sub('__', '_', kernel_shape)
+            print(f"| {'Kernel:':<7} {kernel + remainder:>4}| {'Init Spd:':<10} {(env.init_reward)*1000:>12.3f} ms | {'Up:':<5} {(env.init_reward / best_reward):>10.3f}x | {'New Spd:':<10} {best_reward*1000:>12.3f} ms | {'Act:':<5} {str(action):<60} | {'Kernel shape:':<5} {kernel_shape:<37}")
+        else: remainder-= 1
+
     total_time_original = np.array([i[3] for i in result_states]).sum() * 1000
     total_time_optimized = np.array([i[2] for i in result_states]).sum() * 1000
     total_speedup = total_time_original / total_time_optimized
@@ -569,7 +576,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Training or Inference')
     parser.add_argument('--infer', help='Perform inference', action='store_true')
     parser.add_argument('--path', help='Path to save episode', default='/home/usr/ubuntu/TinyRL/test3/')
-    parser.add_argument('--max_steps_limit', type=int, default=60)
+    parser.add_argument('--max_steps_limit', type=int, default=20)
     parser.add_argument('--model_name', help='model name', default='model_all.pth')
     parser.add_argument('--max_inference_trial', type=int, default=3)
     
