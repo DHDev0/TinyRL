@@ -10,10 +10,10 @@ TRITON=1 python ppo-lstm-pytorch.py --path /absolute/path/to/trial/folder/ --inf
 
 Pytorch/tinygrad version
 
-##############  Main idea:
-Why do you want beam? for deep optimal solution. [Timeframe: long]
-why do you want RL model free? for fast iterative development.[Timeframe: fast / medium]
-Why do you want RL model base? for best optimal solution. [Timeframe: fast]
+##############  Main idea:  
+Why do you want beam? for deep optimal solution. [Timeframe: long]  
+why do you want RL model free? for fast iterative development.[Timeframe: fast / medium]  
+Why do you want RL model base? for best optimal solution. [Timeframe: fast]  
 ##############  
 
 ## Model-Free Reinforcement Learning: (fast training model)
