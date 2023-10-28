@@ -1,4 +1,46 @@
 ############## TOOLKITS ##############
+import numpy as np
+def selector_np(predicted_values, actions):
+  predicted_values_np, actions_np = np.array(predicted_values), np.array(actions)
+  negative_indices = np.where(predicted_values_np < 0)[0]
+  rounded_values = np.round(predicted_values_np[negative_indices], 2)
+  unique_values, counts = np.unique(rounded_values, return_counts=True)
+  unique_indices = unique_values[counts == 1]
+  no_duplicate_indices = np.isin(rounded_values, unique_indices)
+  std_dev = np.std(rounded_values[no_duplicate_indices])
+  stdev_indices = np.abs(rounded_values[no_duplicate_indices]) >= std_dev
+  sorted_indices = np.argsort(rounded_values[no_duplicate_indices][stdev_indices])
+  return actions_np[negative_indices][no_duplicate_indices][stdev_indices][sorted_indices].tolist()
+
+import re
+import cProfile
+import pstats
+import time
+def profile_function(func):
+  def wrapper(*args, **kwargs):
+    start_time = time.time()
+    profiler = cProfile.Profile()
+    profiler.enable()
+    result = func(*args, **kwargs)
+    profiler.disable()
+    elapsed_time = time.time() - start_time
+    if elapsed_time >= 1:  # Save only if elapsed time is 1 second or more
+      with open("/home/usr/profile_stats.txt", "a") as f:
+        stats = pstats.Stats(profiler, stream=f)
+        stats.sort_stats('cumulative')
+        stats.print_stats()
+    return result
+  return wrapper
+
+import time
+def format_time(elapsed_time):
+  hours, remainder = divmod(elapsed_time, 3600)
+  minutes, remainder = divmod(remainder, 60)
+  seconds, remainder = divmod(remainder, 1)
+  remainder = remainder * 1e6
+  milliseconds, remainder = divmod(int(remainder), 1000)
+  microseconds = int(remainder)
+  return f"{int(hours):02} H {int(minutes):02} min {int(seconds):02} sec {int(milliseconds):02} ms {int(microseconds):02} us "
 
 from tinygrad.tensor import Tensor
 from tinygrad.helpers import getenv
@@ -206,16 +248,17 @@ class KernelEnv:
           if c in {"cyan", "green", "white"}: lcl *= s
         if up > 256 or lcl > 256:
           raise ValueError("Invalid action: exceeds workgroup size constraints.")
-        buffer_info = bufs_from_lin(linearized_kernel_copy)
-        
-        # Calculate and return the reward
-        compute_time = time_linearizer(linearized_kernel_copy, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
-        if math.isinf(reward) or np.isnan(reward):
-          raise ValueError("Invalid reward.")
-        
-        self.linearized_kernel , obtained_reward = linearized_kernel_copy , compute_time
-        
-        reward = 1 if obtained_reward < min(self.max_regret) else -1
+        if not no_reward:
+          buffer_info = bufs_from_lin(linearized_kernel_copy)
+          
+          # Calculate and return the reward
+          compute_time = time_linearizer(linearized_kernel_copy, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
+          if math.isinf(reward) or np.isnan(reward):
+            raise ValueError("Invalid reward.")
+          
+          self.linearized_kernel , obtained_reward = linearized_kernel_copy , compute_time
+          
+          reward = 1 if obtained_reward < min(self.max_regret) else -1
         # print(linearized_kernel_copy.printbufs())
       except Exception as e: 
         # print(f"ILLEGAL MOVE ERROR: {e}") 
@@ -318,11 +361,11 @@ class Linear:
   def __call__(self, x):
     return x.linear(self.weight.transpose(), self.bias)
 
-class PPO():
-  def __init__(self, state_size = 4, 
-                action_size = 2, 
+class PPO_tiny():
+  def __init__(self, state_size = 240, 
+                action_size = 1+len(actions), 
                 value_size = 1, 
-                hidden_space_size = 64, 
+                hidden_space_size = 512, 
                 learning_rate = 0.0001,
                 gamma = 0.97, 
                 lmbda = 0.90, 
@@ -427,6 +470,7 @@ class PPO():
       self.optimizer.step()
     self.loss= loss.detach().numpy()
     
+    
 ############## CYCLE TRAIN/INF ##############
 def training(learning_rate = 0.0003, gamma = 0.97,
              lmbda = 0.90, eps_clip = 0.1, 
@@ -437,7 +481,7 @@ def training(learning_rate = 0.0003, gamma = 0.97,
              print_interval = 1, path_save_episode = "/home/test1/", 
              model_path = "model_all.safetensors"):
     
-  model =  PPO(state_size=state_size, 
+  model =  PPO_tiny(state_size=state_size, 
                 action_size=action_size, 
                 value_size=value_size, 
                 hidden_space_size=hidden_space_size,
@@ -474,15 +518,14 @@ def training(learning_rate = 0.0003, gamma = 0.97,
       action = np.random.choice(list(range(ucb_values.shape[0])), p=ucb_values/ucb_values.sum())
       # Take action and observe next state and reward
       next_state, reward, done, _, orr = env.step(action)
-      
-      model.put_data((state, action, reward, next_state,action_prob.detach().numpy()[action].tolist(), hidden_state, new_hidden_state, done))
+      model.put_data((state, action, reward, action_prob.flatten().detach().numpy()[action], hidden_state, new_hidden_state, done))
       del state , hidden_state
       state , hidden_state = next_state , new_hidden_state
       modified_reward = env.init_reward/orr if reward != env.terminal_reward else -1
       episode_scores.append([modified_reward , done , action])
       action_count[action] += 1  # Update action count
       max_steps += 1
-    force_oom()
+    # force_oom()
   
       
     if len(model.data) >= minimum_batch_size:
@@ -504,12 +547,14 @@ def training(learning_rate = 0.0003, gamma = 0.97,
         safe_save(get_state_dict(model), full_model_path)
         if current_episode % 100 == 0: safe_save(get_state_dict(model), os.path.join(path_save_episode, f"{current_episode}_episode_"+model_path))
         # if current_episode % 1 == 0: force_oom()
-                
+        return None
+              
 
-def inference(available_kernels,max_number_of_step = 20,
-              path_save_episode = "/home/test1/",model_path = "model_all.safetensors"):
-    
-  model=PPO()
+def inference(available_kernels,max_number_of_step=20,
+              path_save_episode = "/home/test1/",model_path= "model_all.safetensors",
+              max_trial = 3, strategies = "topk+fusmedian"):
+      
+  model=PPO_tiny()
   model_path = os.path.join(path_save_episode, model_path)
   os.remove(path_save_episode + 'dataset_inference.db') if os.path.exists(path_save_episode + 'dataset_inference.db') else None
   db = KernelEnv(available_kernels=available_kernels, db_path = path_save_episode + 'dataset_inference.db', inference_mode=True)
@@ -519,44 +564,97 @@ def inference(available_kernels,max_number_of_step = 20,
   model = load_state_dict(model, safe_load(model_path)) if os.path.exists(model_path) else None
   if model is None: raise(f"Indalid model path at {model_path}")
   result_states = []
-
+  cache=[]
+  value_cache=[]
+  print("Strategy: ",strategies)
   for kernel in range(len_dataset):
     env = KernelEnv(db_path = path_save_episode + 'dataset_inference.db', inference_mode=True, index_to_pick=kernel+1, max_n_mouve = 60)
     max_moves = 0
     reward_state_pairs = []
     state, _ = env.reset()
-    hidden_state = Tensor.ones(1,2,model.hidden_space_lstm_size, dtype=model.c_type, requires_grad=False)
+    hidden_state = (torch.zeros([1, 1, model.hidden_space_lstm_size], dtype=torch.float),
+                    torch.zeros([1, 1, model.hidden_space_lstm_size], dtype=torch.float))
     while max_moves < max_number_of_step: 
+      #get policy action distribution
       action_prob, new_hidden_state = model.pi(Tensor(state.tolist(), dtype=model.c_type, requires_grad=False), hidden_state)
       action_prob = action_prob.flatten().detach().numpy() 
-      action = np.random.choice(list(range(action_prob.flatten().shape[0])), p=action_prob.flatten().detach().numpy())#np.argmax(action_prob.flatten().detach().numpy())
-      next_state, reward, done, _, orr = env.step(action)
-      reward_state_pairs.append((orr if reward != env.terminal_reward else float("inf") , action, done,pickle.dumps(env.linearized_kernel)))
-      max_moves += 1
-      state , hidden_state = next_state , new_hidden_state
-      if done: break
+      sorted_indices = action_prob_np.argsort()[::-1] 
+      #get value action distribution
+      initk = env.linearized_kernel
+      value_cache = []
+      for action in sorted_indices:
+        next_state, _, _, _, _ = env.step(action, no_reward=True)
+        env.done = False
+        next_action_values = model.v(Tensor(next_state.tolist(), dtype=model.c_type, requires_grad=False), new_hidden_state)
+        value_cache.append(next_action_values.flatten().detach().numpy()[0])
+        env.linearized_kernel = initk
+      
+      #pick strategy
+      if strategies == "valuefilter":
+        filter_action = selector_np(value_cache, sorted_indices) 
+        strategy = filter_action if len(filter_action) != 0 else sorted_indices[:max_trial]
+      if strategies == "best_max_trial_policy":
+        strategy = sorted_indices[:max_trial]
+      if strategies == "best_max_trial_value":
+        strategy = sorted_indices[(np.argsort(-1*np.array(value_cache))[::])[:max_trial]]
+      if strategies == "topk+fusmedian": # need a general way to define the slice parameter
+        value_sort_indices = (np.argsort(-1*np.array(value_cache))[::-1])[:20]
+        final_indices = sorted_indices[value_sort_indices] 
+        common_elements_np = np.intersect1d(final_indices, sorted_indices[:20])
+        weights = len(final_indices) + len(sorted_indices[:20]) - np.searchsorted(final_indices, common_elements_np) - np.searchsorted(sorted_indices[:20], common_elements_np)
+        sorted_common_elements = common_elements_np[np.argsort(-weights)].tolist()[:10]
+        obvious_solution= sorted_indices[:max_trial]
+        median_idx = len(sorted_common_elements) // 2
+        median_and_neighbors = sorted_common_elements[max(0, median_idx-1) : median_idx+2]
+        depth_solution = np.setdiff1d(median_and_neighbors, obvious_solution)
+        strategy = np.concatenate((obvious_solution[:max_trial], depth_solution))
 
-    best_reward,_,_,best_kernel = min(reward_state_pairs) if min(reward_state_pairs)[0] != float("inf") else (env.init_reward,None,True,pickle.dumps(env.get_kernel(env.kernel_pick_index)))
-    action = [act for speed, act, done, kern in reward_state_pairs if speed <= max(reward_state_pairs)[0] and [speed , done] != [float("inf"), True]]
+      for action in strategy:
+        env.linearized_kernel = initk
+        next_state, reward, done, _, orr = env.step(action)
+        env.done = False
+        cache.append((orr if reward != env.terminal_reward else env.init_reward , action, done,next_state,env.linearized_kernel))
+        # if not done: break ##if you want to select the first working mouve only
+
+      env.linearized_kernel = min(cache)[-1]
+      done = min(cache)[-3]
+      reward_state_pairs.append(min(cache))
+      state , hidden_state = min(cache)[-2] , new_hidden_state
+      max_moves += 1
+      cache=[]
+      value_cache=[]
+      if done: break
+    # torch.cuda.empty_cache()
+    if kernel % 10 == 0: force_oom()
+    best_reward,best_kernel =  min(reward_state_pairs)[0], min(reward_state_pairs)[-1]
+    action = [act for speed, act, done, *_ in reward_state_pairs if speed <= env.init_reward and not done]
     result_states.append([kernel ,env.init_reward / best_reward,best_reward ,env.init_reward, best_reward,best_kernel,action ])
-    print(f"| Kernel: {kernel} | Initial compute speed: {(env.init_reward)*1000:.3f} ms | Speedup: {env.init_reward / best_reward:.3f}x | New compute speed: {best_reward*1000:.3f} ms | with action: {action} |" )
-    if kernel % 1 == 0: force_oom()
-  # Final summary
-  total_time_original = np.array([i[3] for i in result_states]).sum() * 1000 
+    kernel_shape = re.sub(' +', '_', result_states[-1][-2].colored_shape()).strip('_')
+    kernel_shape = re.sub('__', '_', kernel_shape)
+    print(f"| {'Kernel:':<7} {kernel + remainder:>4}| {'Init Spd:':<10} {(env.init_reward)*1000:>12.3f} ms | {'Up:':<5} {(env.init_reward / best_reward):>10.3f}x | {'New Spd:':<10} {best_reward*1000:>12.3f} ms | {'Act:':<5} {str(action):<60} | {'Kernel shape:':<5} {kernel_shape:<37}")
+
+
+  total_time_original = np.array([i[3] for i in result_states]).sum() * 1000
   total_time_optimized = np.array([i[2] for i in result_states]).sum() * 1000
   total_speedup = total_time_original / total_time_optimized
   print(f"TOTAL SpeedUP: {total_speedup:.3f}x, Previous Total time: {total_time_original:.3f} ms, New total time: {total_time_optimized:.3f} ms")
+  return result_states
 
-
-#EENTRY POINT
+  
+#ENTRY POINT
 import argparse
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(description='Training or Inference')
+  #by default without infer it will perform training
   parser.add_argument('--infer', help='Perform inference', action='store_true')
-  parser.add_argument('--path', help='Path to save episode', default='/home/hotmil/ubuntu/TinyRL/testiny/')
-  parser.add_argument('--max_steps_limit', type=int, default=60)
+  #share parameter between inference and training
+  parser.add_argument('--path', help='Path to save episode', default='/home/hotmil/ubuntu/TinyRL/test4/')
   parser.add_argument('--model_name', help='model name', default='model_all.safetensors')
-  
+  parser.add_argument('--max_steps_limit', type=int, default=60)
+  #inference parameter
+  parser.add_argument('--max_inference_trial', type=int, default=3)
+  parser.add_argument('--inference_strategy', type=str, default="topk+fusmedian")
+  #training parameter
   parser.add_argument('--learning_rate', type=float, default=0.0003)
   parser.add_argument('--gamma', type=float, default=0.97)
   parser.add_argument('--lmbda', type=float, default=0.90)
@@ -566,7 +664,7 @@ if __name__ == "__main__":
   parser.add_argument('--action_size', type=int, default=1 + len(actions))  # Assuming actions is defined elsewhere
   parser.add_argument('--value_size', type=int, default=1)
   parser.add_argument('--hidden_space_size', type=int, default=1024)
-  parser.add_argument('--minimum_batch_size', type=int, default=60)
+  parser.add_argument('--minimum_batch_size', type=int, default=20)
   parser.add_argument('--episode_count', type=int, default=2000)
   parser.add_argument('--print_interval', type=int, default=1)
   args = parser.parse_args()
@@ -576,14 +674,19 @@ if __name__ == "__main__":
     from tinygrad.tensor import Tensor
     from models.resnet import ResNet50
     mdl = ResNet50()
-    example = Tensor.ones(64, 3, 224, 224)
+    example = Tensor.empty(64, 3, 224, 224)
     available_kernels = extract_ast_kernels(mdl,example)
     del mdl, example
     force_oom()
+    
+    start_time = time.time()
     result = inference(available_kernels,
-                        max_number_of_step = args.max_steps_limit,
+                        max_number_of_step=args.max_steps_limit,
                         path_save_episode = args.path,
-                        model_path = args.model_name)
+                        model_path = args.model_name,
+                        max_trial = args.max_inference_trial,
+                        strategies= args.inference_strategy)
+    print(f"Inference elapsed time: {format_time(time.time() - start_time)}")
   else:
     # Initialize database of the environment
     # if load_val(default = 0,filename = "state.pkl") == 0 :
@@ -608,6 +711,6 @@ if __name__ == "__main__":
         print_interval=args.print_interval,
         path_save_episode = args.path,
         model_path= args.model_name
-      )
+    )
 
         
