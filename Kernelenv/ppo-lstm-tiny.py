@@ -492,7 +492,7 @@ def training(learning_rate = 0.0003, gamma = 0.97,
                 K_epoch=K_epoch)
   
   full_model_path = os.path.join(path_save_episode, model_path)
-  model = load_state_dict(model, safe_load(full_model_path)) if os.path.exists(full_model_path) else model
+  load_state_dict(model, safe_load(full_model_path)) if os.path.exists(full_model_path) else None
   # Initialize episode variables
   current_episode = load_val(default = 0,filename = path_save_episode+"state.pkl")
   episode_scores = []
@@ -561,7 +561,7 @@ def inference(available_kernels,max_number_of_step=20,
   len_dataset = len(available_kernels)
   del available_kernels , db
   
-  model = load_state_dict(model, safe_load(model_path)) if os.path.exists(model_path) else None
+  load_state_dict(model, safe_load(model_path)) if os.path.exists(model_path) else None
   if model is None: raise(f"Indalid model path at {model_path}")
   result_states = []
   cache=[]
