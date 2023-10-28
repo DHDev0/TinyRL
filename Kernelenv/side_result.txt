@@ -9,7 +9,7 @@ def beam_search(lin:Linearizer, rawbufs, amt:int) -> Linearizer:
   diskcache_put("beam_search", key, beam[0].applied_opts)
   return beam[0]
   ```
-using only the best mouve find by policy ( strategy: best_max_trial_policy ) 
+using only the best first move find by policy ( strategy: best_max_trial_policy ) 
 (tiny) root@LAPTOP-5USAF0E6:/home/hotmil/ubuntu# BEAM=1 TRITON=1 DEBUG=1 python /home/hotmil/ubuntu/TinyRL/ppo_lstm_tiny.py
 beam1  : 512 4                          :    11.26 us  <  hc     : 16 32 4                        :    13.31 us
 beam1  : 3840 4 4 4                     :    37.92 us  <  hc     : 2560 32 3                      :    56.29 us
