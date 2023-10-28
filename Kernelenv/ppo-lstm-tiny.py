@@ -374,7 +374,7 @@ class PPO_tiny():
                 c_type = dtypes.float32):
 
     self.c_type = dtypes.float32
-    self.transition_data = []
+    self.data = []
     self.gamma = gamma 
     self.lmbda = lmbda 
     self.eps_clip = eps_clip
@@ -408,11 +408,11 @@ class PPO_tiny():
     return value_output        
       
   def put_data(self, transition_tuple):
-    self.transition_data.append(transition_tuple)
+    self.data.append(transition_tuple)
       
   def make_batch(self):
     state_list, action_list, reward_list, next_state_list, action_prob_list, hidden_input_list, hidden_output_list, done_list = [], [], [], [], [], [], [], []
-    for transition in self.transition_data:
+    for transition in self.data:
       state, action, reward, next_state, action_prob, hidden_input, hidden_output, is_done = transition
       
       state_list.append(state)
@@ -433,7 +433,7 @@ class PPO_tiny():
     Tensor(done_list, dtype=self.c_type, requires_grad=False), \
     Tensor(action_prob_list, dtype=self.c_type, requires_grad=False)
     
-    self.transition_data = []
+    self.data = []
     return state_tensor.realize(), action_tensor.realize(), reward_tensor.realize(), next_state_tensor.realize(), done_mask_tensor.realize(), action_prob_tensor.realize(), hidden_input_list[0].realize(), hidden_output_list[0].realize()
   
   def train_net(self):
@@ -500,7 +500,7 @@ def training(learning_rate = 0.0003, gamma = 0.97,
   
   while current_episode < episode_count:
     # Reset for new episode
-    env = KernelEnv(db_path = path_save_episode + 'dataset_training.db',max_n_mouve = 60)
+    env = KernelEnv(db_path = path_save_episode + 'dataset_training.db',max_n_mouve = max_steps_limit)
     Tensor.no_grad, Tensor.training = True, False
     state, _ = env.reset()
     done = False
