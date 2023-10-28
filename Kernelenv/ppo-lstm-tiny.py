@@ -518,7 +518,7 @@ def training(learning_rate = 0.0003, gamma = 0.97,
       action = np.random.choice(list(range(ucb_values.shape[0])), p=ucb_values/ucb_values.sum())
       # Take action and observe next state and reward
       next_state, reward, done, _, orr = env.step(action)
-      model.put_data((state, action, reward, action_prob.flatten().detach().numpy()[action], hidden_state, new_hidden_state, done))
+      model.put_data((state, action, reward, next_state, action_prob.flatten().detach().numpy()[action], hidden_state, new_hidden_state, done))
       del state , hidden_state
       state , hidden_state = next_state , new_hidden_state
       modified_reward = env.init_reward/orr if reward != env.terminal_reward else -1
