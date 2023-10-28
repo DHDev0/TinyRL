@@ -547,7 +547,7 @@ def training(learning_rate = 0.0003, gamma = 0.97,
         safe_save(get_state_dict(model), full_model_path)
         if current_episode % 100 == 0: safe_save(get_state_dict(model), os.path.join(path_save_episode, f"{current_episode}_episode_"+model_path))
         # if current_episode % 1 == 0: force_oom()
-        return None
+        
               
 
 def inference(available_kernels,max_number_of_step=20,
