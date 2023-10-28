@@ -13,11 +13,11 @@ Pytorch/tinygrad version
 
 Main idea:
 \`\`\`markdown
-##########################################################################################################
+##############
 Why do you want beam? for deep optimal solution. [Timeframe: long]
 why do you want RL model free? for fast iterative development.[Timeframe: fast / medium]
 Why do you want RL model base? for best optimal solution. [Timeframe: fast]
-##########################################################################################################
+##############
 
 ## Model-Free Reinforcement Learning: (fast training model)
 - **General RL Based on Large Kernel**
@@ -44,7 +44,7 @@ Why do you want RL model base? for best optimal solution. [Timeframe: fast]
     - **Optional**
       - Beam search if allow when RL fails to find a satisfactory solution.
 
-#############################################################################################################
+##############
 
 ## Model-Based Reinforcement Learning: (long training model)
 - **Optimal solution for cloud compute with tinyrack**
@@ -59,7 +59,7 @@ Why do you want RL model base? for best optimal solution. [Timeframe: fast]
   - **Optimize learning on cloud with offline RL**
 - **Transfer model to local user or keep an API call for web-beam**
 
-##############################################################################################################
+##############
 
 There is a possibility of mcts for fast training with optimal hyperparameter.
 \`\`\`
