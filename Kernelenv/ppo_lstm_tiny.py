@@ -223,7 +223,7 @@ class KernelEnv:
         print(f"Number of active kernels after removal: {self.count_kernels()}")
             
   
-  def step(self, action_idx):
+  def step(self, action_idx, , no_reward=False)):
     reward = self.terminal_reward
     obtained_reward = self.terminal_reward
     if self.done: raise Exception("Episode already done, reset the environment first.")
