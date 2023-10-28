@@ -61,7 +61,6 @@ optimizing for CUDA
 *** 2380.44 ms : kernel 58 E_8_125_8_8n1                         [125, 8, 1]        [8, 8, 1]    takes    0.02 ms,      6 GFLOPS
 ******* total 2380.46 ms,    222 GFLOPS
 
-
 optimizing for CUDA
 59
 Strategy:  best_max_trial_policy
@@ -125,7 +124,6 @@ Strategy:  best_max_trial_policy
 | Kernel:   57| Init Spd:         1.754 ms | Up:        3.379x | New Spd:          0.519 ms | Act:  [41]                                                         | Kernel shape: _16__4_1000
 | Kernel:   58| Init Spd:         1.722 ms | Up:       48.057x | New Spd:          0.036 ms | Act:  [41, 41, 46, 7]                                              | Kernel shape: _4__125__4__4__4__2
 TOTAL SpeedUP: 6.409x, Previous Total time: 443534.938 ms, New total time: 69207.093 ms
-Inference elapsed time: 00 H 03 min 25 sec 594 ms 427 us 
 
 (tiny) hotmil@LAPTOP-5USAF0E6:~/ubuntu$ TRITON=1 python /home/hotmil/ubuntu/TinyRL/ppo-lstm.py --infer --inference_strategy best_max_trial_value
 optimizing for CUDA
@@ -191,8 +189,9 @@ Strategy:  best_max_trial_value
 | Kernel:   57| Init Spd:         1.754 ms | Up:        3.379x | New Spd:          0.519 ms | Act:  [41]                                                         | Kernel shape: _16__4_1000
 | Kernel:   58| Init Spd:         1.722 ms | Up:       48.057x | New Spd:          0.036 ms | Act:  [41, 41, 46, 7]                                              | Kernel shape: _4__125__4__4__4__2
 TOTAL SpeedUP: 5.401x, Previous Total time: 443534.938 ms, New total time: 82118.083 ms
-Inference elapsed time: 00 H 04 min 22 sec 947 ms 156 us 
 
+(tiny) hotmil@LAPTOP-5USAF0E6:~/ubuntu$ TRITON=1 python /home/hotmil/ubuntu/TinyRL/ppo-lstm.py --infer --inference_strategy topk+fusmedian
+optimizing for CUDA
 59
 Strategy:  topk+fusmedian
 | Kernel:    0| Init Spd:      4988.076 ms | Up:       35.571x | New Spd:        140.231 ms | Act:  [41, 39, 9, 39, 39, 39, 39, 39, 9]                           | Kernel shape: _4__28__112__4__2__2__2__2__2__2__3__7__7__4__4
@@ -257,6 +256,7 @@ Strategy:  topk+fusmedian
 | Kernel:   59| Init Spd:         1.722 ms | Up:       48.057x | New Spd:          0.036 ms | Act:  [41, 41, 46, 7]                                              | Kernel shape: _4__125__4__4__4__2
 TOTAL SpeedUP: 10.648x, Previous Total time: 443534.938 ms, New total time: 41652.958 ms
 
+(tiny) hotmil@LAPTOP-5USAF0E6:~/ubuntu$ TRITON=1 python /home/hotmil/ubuntu/TinyRL/ppo-lstm.py --infer --inference_strategy valuefilter
 optimizing for CUDA
 59
 Strategy:  valuefilter
