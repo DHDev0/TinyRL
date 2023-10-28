@@ -441,9 +441,9 @@ class PPO_tiny():
     state_batch, action_batch, reward_batch, next_state_batch, done_mask, action_prob_batch, first_hidden_state, second_hidden_state = self.make_batch()
     
     for _ in range(self.K_epoch):
-      next_state_value = self.value(next_state_batch, second_hidden_state).squeeze(1).realize()
+      next_state_value = self.v(next_state_batch, second_hidden_state).squeeze(1).realize()
       td_target = reward_batch + self.gamma * next_state_value * done_mask
-      state_value = self.value(state_batch, first_hidden_state).squeeze(1).realize()
+      state_value = self.v(state_batch, first_hidden_state).squeeze(1).realize()
       td_error = td_target - state_value
       td_error = td_error.detach().numpy()
       
@@ -455,7 +455,7 @@ class PPO_tiny():
       advantage_list.reverse()
       advantage_tensor = Tensor(advantage_list, dtype=self.c_type, requires_grad=False).realize()
       
-      pi, _ = self.policy(state_batch, first_hidden_state)
+      pi, _ = self.pi(state_batch, first_hidden_state)
       pi_action = pi.squeeze(1).gather(idx=action_batch, dim=1).realize()
       ratio = (pi_action.log() - action_prob_batch.log()).exp()
       surrogate1 = ratio * advantage_tensor 
@@ -712,5 +712,3 @@ if __name__ == "__main__":
         path_save_episode = args.path,
         model_path= args.model_name
     )
-
-        
