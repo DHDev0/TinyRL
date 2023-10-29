@@ -219,11 +219,11 @@ class KernelEnv:
         # return self.init_state #gym style
       except Exception as e:
         print("REMOVE KERNEL AFTER ERROR: ",e)
-        self.delete_kernel(self.kernel_pick_index)
+        # self.delete_kernel(self.kernel_pick_index)
         print(f"Number of active kernels after removal: {self.count_kernels()}")
             
   
-  def step(self, action_idx, , no_reward=False)):
+  def step(self, action_idx, no_reward=False):
     reward = self.terminal_reward
     obtained_reward = self.terminal_reward
     if self.done: raise Exception("Episode already done, reset the environment first.")
@@ -361,6 +361,7 @@ class Linear:
   def __call__(self, x):
     return x.linear(self.weight.transpose(), self.bias)
 
+from tinygrad.nn.state import get_state_dict
 class PPO_tiny():
   def __init__(self, state_size = 240, 
                 action_size = 1+len(actions), 
@@ -387,7 +388,12 @@ class PPO_tiny():
     self.lstm_layer = LSTM(hidden_space_size, hidden_space_size // 2,c_type=c_type)
     self.policy_output_layer = Linear(hidden_space_size // 2, action_size,c_type=c_type)
     self.value_output_layer = Linear(hidden_space_size // 2, value_size,c_type=c_type)
-    self.optimizer = Adam(get_parameters([self.input_layer,self.lstm_layer,self.policy_output_layer,self.value_output_layer]), lr=learning_rate)
+    self.optimizer = Adam([value for key, value in get_state_dict(self.input_layer).items() if isinstance(value, Tensor)] +
+                          [value for i in self.lstm_layer.cells for key, value in get_state_dict(i).items() if isinstance(value, Tensor)] + 
+                          [value for key, value in get_state_dict(self.policy_output_layer).items() if isinstance(value, Tensor)] +
+                          [value for key, value in get_state_dict(self.policy_output_layer).items() if isinstance(value, Tensor)],
+                          lr=learning_rate)
+
 
 
   def pi(self, input_state, hidden_state):
@@ -434,11 +440,12 @@ class PPO_tiny():
     Tensor(action_prob_list, dtype=self.c_type, requires_grad=False)
     
     self.data = []
-    return state_tensor.realize(), action_tensor.realize(), reward_tensor.realize(), next_state_tensor.realize(), done_mask_tensor.realize(), action_prob_tensor.realize(), hidden_input_list[0].realize(), hidden_output_list[0].realize()
+    return state_tensor.realize(), action_tensor.realize(), reward_tensor.realize(), next_state_tensor.realize(), done_mask_tensor.realize(), action_prob_tensor.realize(), hidden_input_list[0], hidden_output_list[0]
   
   def train_net(self):
-    Tensor.no_grad, Tensor.training = False, True
+
     state_batch, action_batch, reward_batch, next_state_batch, done_mask, action_prob_batch, first_hidden_state, second_hidden_state = self.make_batch()
+    Tensor.no_grad, Tensor.training = False, True
     
     for _ in range(self.K_epoch):
       next_state_value = self.v(next_state_batch, second_hidden_state).squeeze(1).realize()
@@ -462,14 +469,14 @@ class PPO_tiny():
       surrogate2 = (ratio.clip(1 - self.eps_clip, 1 + self.eps_clip) * advantage_tensor).realize()
       diff = (surrogate1 < surrogate2).detach()
       surrogate = (diff*surrogate1) + (surrogate2*(-1*(diff-1)))
-      loss = -surrogate.realize() + smooth_l1_loss(state_value, td_target).realize()
+      loss = -surrogate.realize() + smooth_l1_loss(state_value, td_target)
       
       self.optimizer.zero_grad()
       loss = loss.mean()
       loss.backward()
       self.optimizer.step()
     self.loss= loss.detach().numpy()
-    
+
     
 ############## CYCLE TRAIN/INF ##############
 def training(learning_rate = 0.0003, gamma = 0.97,
@@ -501,7 +508,7 @@ def training(learning_rate = 0.0003, gamma = 0.97,
   while current_episode < episode_count:
     # Reset for new episode
     env = KernelEnv(db_path = path_save_episode + 'dataset_training.db',max_n_mouve = max_steps_limit)
-    Tensor.no_grad, Tensor.training = True, False
+    Tensor.no_grad, Tensor.training = False, False
     state, _ = env.reset()
     done = False
     max_steps = 0
@@ -519,6 +526,7 @@ def training(learning_rate = 0.0003, gamma = 0.97,
       # Take action and observe next state and reward
       next_state, reward, done, _, orr = env.step(action)
       model.put_data((state, action, reward, next_state, action_prob.flatten().detach().numpy()[action], hidden_state, new_hidden_state, done))
+      print(reward, done,action)
       del state , hidden_state
       state , hidden_state = next_state , new_hidden_state
       modified_reward = env.init_reward/orr if reward != env.terminal_reward else -1
@@ -547,7 +555,6 @@ def training(learning_rate = 0.0003, gamma = 0.97,
         safe_save(get_state_dict(model), full_model_path)
         if current_episode % 100 == 0: safe_save(get_state_dict(model), os.path.join(path_save_episode, f"{current_episode}_episode_"+model_path))
         # if current_episode % 1 == 0: force_oom()
-        
               
 
 def inference(available_kernels,max_number_of_step=20,
@@ -561,7 +568,7 @@ def inference(available_kernels,max_number_of_step=20,
   len_dataset = len(available_kernels)
   del available_kernels , db
   
-  load_state_dict(model, safe_load(model_path)) if os.path.exists(model_path) else None
+  load_state_dict(model, safe_load(full_model_path)) if os.path.exists(full_model_path) else None
   if model is None: raise(f"Indalid model path at {model_path}")
   result_states = []
   cache=[]
@@ -648,7 +655,7 @@ if __name__ == "__main__":
   #by default without infer it will perform training
   parser.add_argument('--infer', help='Perform inference', action='store_true')
   #share parameter between inference and training
-  parser.add_argument('--path', help='Path to save episode', default='/home/usr/ubuntu/TinyRL/test4/')
+  parser.add_argument('--path', help='Path to save episode', default='/home/usr/ubuntu/TinyRL/test5/')
   parser.add_argument('--model_name', help='model name', default='model_all.safetensors')
   parser.add_argument('--max_steps_limit', type=int, default=60)
   #inference parameter
@@ -664,7 +671,7 @@ if __name__ == "__main__":
   parser.add_argument('--action_size', type=int, default=1 + len(actions))  # Assuming actions is defined elsewhere
   parser.add_argument('--value_size', type=int, default=1)
   parser.add_argument('--hidden_space_size', type=int, default=1024)
-  parser.add_argument('--minimum_batch_size', type=int, default=20)
+  parser.add_argument('--minimum_batch_size', type=int, default=60)
   parser.add_argument('--episode_count', type=int, default=2000)
   parser.add_argument('--print_interval', type=int, default=1)
   args = parser.parse_args()
@@ -712,3 +719,5 @@ if __name__ == "__main__":
         path_save_episode = args.path,
         model_path= args.model_name
     )
+
+        
