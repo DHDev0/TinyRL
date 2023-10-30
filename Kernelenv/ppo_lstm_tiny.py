@@ -1,17 +1,6 @@
+from typing import Dict, List, cast, DefaultDict, Optional, Tuple, Any, Callable, Union
+from tinygrad.ops import LazyOp
 ############## TOOLKITS ##############
-import numpy as np
-def selector_np(predicted_values, actions):
-  predicted_values_np, actions_np = np.array(predicted_values), np.array(actions)
-  negative_indices = np.where(predicted_values_np < 0)[0]
-  rounded_values = np.round(predicted_values_np[negative_indices], 2)
-  unique_values, counts = np.unique(rounded_values, return_counts=True)
-  unique_indices = unique_values[counts == 1]
-  no_duplicate_indices = np.isin(rounded_values, unique_indices)
-  std_dev = np.std(rounded_values[no_duplicate_indices])
-  stdev_indices = np.abs(rounded_values[no_duplicate_indices]) >= std_dev
-  sorted_indices = np.argsort(rounded_values[no_duplicate_indices][stdev_indices])
-  return actions_np[negative_indices][no_duplicate_indices][stdev_indices][sorted_indices].tolist()
-
 import re
 import cProfile
 import pstats
@@ -31,9 +20,10 @@ def profile_function(func):
         stats.print_stats()
     return result
   return wrapper
+# @profile_function
 
 import time
-def format_time(elapsed_time):
+def format_time(elapsed_time : float) -> str:
   hours, remainder = divmod(elapsed_time, 3600)
   minutes, remainder = divmod(remainder, 60)
   seconds, remainder = divmod(remainder, 1)
@@ -44,12 +34,12 @@ def format_time(elapsed_time):
 
 from tinygrad.tensor import Tensor
 from tinygrad.helpers import getenv
-def force_oom():
+def force_oom() -> None:
   if 1 in [getenv("TRITON") ,getenv("CUDA")]:
     try: large_tensor = Tensor.empty(10000000000000).realize()
     except Exception as e: pass
 
-def split_and_find_max(list_of_lists):
+def split_and_find_max(list_of_lists : list)  -> List[List[Union[float, bool, int]]]:
   stacked_list = []
   temp_list = []
   for inner_list in list_of_lists:
@@ -66,7 +56,7 @@ def split_and_find_max(list_of_lists):
 from tinygrad.tensor import Tensor
 from tinygrad.ops import LoadOps, Device, Compiled
 from typing import List, Any
-def extract_ast_kernels(mdl,example) -> List[Any]:
+def extract_ast_kernels(mdl : Callable, example : Tensor) -> List[str]:
   device: Compiled = Device[Device.DEFAULT]
   print(f"optimizing for {Device.DEFAULT}")
   seen = set()
@@ -77,18 +67,18 @@ def extract_ast_kernels(mdl,example) -> List[Any]:
   return sched
 
 import numpy as np
-def count_pos_neg(arr):
+def count_pos_neg(arr : np.ndarray) -> Tuple[int,int]:
   pos_count , neg_count = np.sum(arr > 0) , np.sum(arr < 0)
   return pos_count, neg_count
 
-def print_to_file(file_path, text):
+def print_to_file(file_path : str, text : str) -> None:
   with open(file_path, 'a') as file:
     print(text, file=file)
 
 import pickle
-def save_val(episode, filename = "state.pkl"):
+def save_val(episode : Any, filename : str = "state.pkl") -> None:
     with open(f"{filename}", "wb") as f:pickle.dump(episode, f)
-def load_val(default = 0, filename = "state.pkl"):
+def load_val(default : Any = 0, filename : str = "state.pkl") -> Any:
   try: 
     with open(f"{filename}", "rb") as f: return pickle.load(f)
   except FileNotFoundError:return default
@@ -104,13 +94,13 @@ from tinygrad.codegen.optimizer import Opt
 
 class KernelEnv:
   def __init__(self,
-                available_kernels = None,
-                db_path = None,
-                inference_mode = False,
-                index_to_pick = 0, 
-                max_n_mouve = 60,
-                max_retries = 1000,
-                terminal_reward = -1):
+                available_kernels : List[str] = None,
+                db_path : str = None,
+                inference_mode : bool= False,
+                index_to_pick : int = 0, 
+                max_n_mouve : int = 60,
+                max_retries : int = 1000,
+                terminal_reward : float = -1.):
     
     self.terminal_reward = terminal_reward#-(math.log(GLOBAL_TIMEOUT)*np.pi)
     self.index = index_to_pick
@@ -122,7 +112,7 @@ class KernelEnv:
     if available_kernels is not None: self.add_kernels(available_kernels)
     self.max_global_size= 65536
     
-  def query_db(self, query, args=()):
+  def query_db(self, query : str, args : tuple =()) -> tuple:
     for retry in range(self.max_retries):
       conn = None
       try:
@@ -136,9 +126,10 @@ class KernelEnv:
         if not isinstance(e, sqlite3.OperationalError): print(f'An exception occurred: {e}')
         if retry == self.max_retries - 1: raise
         time.sleep(0.1)
-      finally: if conn is not None: conn.close()
+      finally: 
+        if conn is not None: conn.close()
 
-  def update_db(self, query, args=()):
+  def update_db(self, query : str, args: tuple = ()) -> None:
     for retry in range(self.max_retries):
       conn = None
       try:
@@ -152,13 +143,14 @@ class KernelEnv:
         if not isinstance(e, sqlite3.OperationalError): print(f'An exception occurred: {e}')
         if retry == self.max_retries - 1: raise
         time.sleep(0.1)
-      finally: if conn is not None: conn.close() 
+      finally: 
+        if conn is not None: conn.close() 
       
-  def init_db(self):
+  def init_db(self) -> None:
     if not os.path.exists(self.db_path):
       self.update_db("CREATE TABLE kernels (id INTEGER PRIMARY KEY, kernel_data BLOB, last_num_steps INTEGER, total_visits INTEGER)")
 
-  def add_kernels(self, kernel_list):
+  def add_kernels(self, kernel_list : List[str]) -> None:
     for kernel in kernel_list:
       serialized_kernel = pickle.dumps(kernel)
       if not self.inference_mode:
@@ -166,7 +158,7 @@ class KernelEnv:
         if len(res) == 0: self.update_db("INSERT INTO kernels (kernel_data, last_num_steps, total_visits) VALUES (?, 0, 0)", (serialized_kernel,))
       else: self.update_db("INSERT INTO kernels (kernel_data, last_num_steps, total_visits) VALUES (?, 0, 0)", (serialized_kernel,))
 
-  def priority_game(self):
+  def priority_game(self) -> int:
     data = self.query_db("SELECT id, last_num_steps, total_visits FROM kernels")
     active_indices = np.array([row[0] for row in data])
     last_num_steps = np.array([row[1] for row in data])
@@ -180,21 +172,21 @@ class KernelEnv:
     self.update_db(f"UPDATE kernels SET last_num_steps = 0, total_visits = total_visits + 1 WHERE id = {chosen_index}")
     return chosen_index
 
-  def get_kernel(self, kernel_id):
+  def get_kernel(self, kernel_id : int) -> str:
     data = self.query_db(f"SELECT kernel_data FROM kernels WHERE id = {kernel_id}")
     serialized_kernel = data[0][0]
     return pickle.loads(serialized_kernel)
 
-  def update_kernel_step(self, kernel_id):
+  def update_kernel_step(self, kernel_id : int) -> None:
     self.update_db(f"UPDATE kernels SET last_num_steps = last_num_steps + 1 WHERE id = {kernel_id}")
   
-  def delete_kernel(self, kernel_id):
+  def delete_kernel(self, kernel_id : int) -> None:
     self.update_db(f"DELETE FROM kernels WHERE id = {kernel_id}")
 
-  def count_kernels(self):
+  def count_kernels(self) -> Tuple[int]:
     return self.query_db("SELECT COUNT(*) FROM kernels")
 
-  def reset(self):
+  def reset(self) -> Tuple[Optional[np.ndarray], None]:
     while True:
       try:
         self.max_regret = [] 
@@ -206,7 +198,7 @@ class KernelEnv:
           self.kernel_pick_index = self.priority_game()
           kernel_pick = self.get_kernel(self.kernel_pick_index)
           
-        #Convert ast kernel to linearizer, get initial speed and state           
+        #Convert ast kernel to linearizer, get initial kernel speed and state           
         linearized_kernel = ast_str_to_lin(kernel_pick)
         buffer_info = bufs_from_lin(linearized_kernel)
         initial_reward = time_linearizer(linearized_kernel, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
@@ -223,10 +215,10 @@ class KernelEnv:
         # For broken kernel, show the error and delete them from dataset
         if not self.count_kernels()[0] == 0 : self.delete_kernel(self.kernel_pick_index)
         print("REMOVE KERNEL AFTER ERROR: ",e)
-        print(f"Number of active kernels after removal: {self.count_kernels()}")
+        print(f"Number of active kernels after removal: {self.count_kernels()[0]}")
         if self.count_kernels()[0] == 0 and self.inference_mode: return None, None
   
-  def step(self, action_idx, no_reward=False):
+  def step(self, action_idx : int , no_reward : bool = False) -> Tuple[np.ndarray, float, bool, None, float]:
     if self.done: raise Exception("Episode already done, reset the environment first.")
     #default var for fail action
     reward = self.terminal_reward
@@ -255,10 +247,10 @@ class KernelEnv:
       if not no_reward:
         # Calculate and save the reward
         buffer_info = bufs_from_lin(linearized_kernel_copy)
-        compute_time = time_linearizer(linearized_kernel_copy, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
+        obtained_reward = time_linearizer(linearized_kernel_copy, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
         if math.isinf(reward) or np.isnan(reward): raise ValueError("Invalid reward.")
-        reward = 1 if obtained_reward < min(self.max_regret) else -1
-        self.l_k , obtained_reward = linearized_kernel_copy , compute_time
+        reward = 1. if obtained_reward < min(self.max_regret) else -1.
+        self.l_k  = linearized_kernel_copy
         # print(linearized_kernel_copy.printbufs())
         
     except Exception as e: pass
@@ -289,14 +281,15 @@ from tinygrad.nn.optim import Adam
 from tinygrad.nn.state import get_parameters
 from tinygrad.ops import _Device as Device
 from tinygrad.nn.state import safe_save, safe_load, get_state_dict, load_state_dict
+from tinygrad.codegen.linearizer import Linearizer
 import numpy as np
 import time
 
 
-def sgn(x): return x/x.pow(2.).sqrt()#.abs()
-def inf_to(x,y): return (1-sgn(x-y))/2
-def sup_to(x,y): return (1+sgn(x-y))/2
-def smooth_l1_loss(predicted_value, target_value, reduction='mean', beta=1.0):
+def sgn(x : Tensor) -> Tensor: return x/x.pow(2.).sqrt()#.abs()
+def inf_to(x : Tensor,y : Tensor) -> Tensor: return (1-sgn(x-y))/2
+def sup_to(x : Tensor,y : Tensor) -> Tensor: return (1+sgn(x-y))/2
+def smooth_l1_loss(predicted_value : Tensor, target_value : Tensor, reduction : str = 'mean', beta : float = 1.0) -> Tensor:
   elementwise_difference = predicted_value - target_value
   mask = inf_to(elementwise_difference , beta).realize()
   loss = (mask * (0.5*elementwise_difference**2 / beta)) + ((-1*(mask-1)) * (elementwise_difference.abs() - 0.5*beta)).realize()
@@ -305,15 +298,14 @@ def smooth_l1_loss(predicted_value, target_value, reduction='mean', beta=1.0):
 
 import math
 class LSTMCell:
-  def __init__(self, input_size, hidden_size, dropout,c_type):
+  def __init__(self, input_size : int, hidden_size : int, dropout : float, c_type : dtypes):
     self.dropout = dropout
     bound = math.sqrt(1 / hidden_size)
     self.weights_ih = Tensor.uniform(hidden_size * 4, input_size, low=-bound, high=bound, dtype=c_type)
     self.weights_hh = Tensor.uniform(hidden_size * 4, hidden_size, low=-bound, high=bound, dtype=c_type)
     self.bias_ih = Tensor.ones(hidden_size, dtype=c_type).cat(Tensor.zeros(hidden_size * 3,dtype=c_type),dim=0).realize()
     self.bias_hh = Tensor.zeros(hidden_size * 4, dtype=c_type)
-    
-  def __call__(self, x, hc):
+  def __call__(self, x : Tensor, hc : Tensor) -> Tensor:
     gates = x.linear(self.weights_ih.T, self.bias_ih) + hc[:x.shape[0]].linear(self.weights_hh.T, self.bias_hh)
     i, f, g, o = gates.chunk(4, 1)
     i, f, g, o = i.realize(), f.realize(), g.realize(), o.realize()
@@ -324,13 +316,12 @@ class LSTMCell:
 
 
 class LSTM:
-  def __init__(self, input_size, hidden_size, layers=1, dropout=0,c_type=dtypes.float32):
+  def __init__(self, input_size : int, hidden_size : int, layers : int = 1, dropout : float = 0. ,c_type : dtypes = dtypes.float32):
     self.input_size = input_size
     self.hidden_size = hidden_size
     self.layers = layers
     self.cells = [LSTMCell(input_size, hidden_size, dropout,c_type) if i == 0 else LSTMCell(hidden_size, hidden_size, dropout if i != layers - 1 else 0) for i in range(layers)]
-    
-  def __call__(self, x, hc):
+  def __call__(self, x: Tensor, hc : Tensor) -> Tuple[Tensor,Tensor]:
     if hc is None: hc = Tensor.zeros(self.layers, 2 * x.shape[1], self.hidden_size, requires_grad=False)
     output = None
     # forward pass through layer
@@ -344,24 +335,24 @@ class LSTM:
 
 
 class Linear:
-  def __init__(self, in_features, out_features, bias=True,c_type=dtypes.float32):
+  def __init__(self, in_features : int, out_features : int, bias : bool = True, c_type : dtypes = dtypes.float32):
     self.weight = Tensor.kaiming_uniform(out_features, in_features, a=math.sqrt(5), dtype=c_type)
     bound = 1 / math.sqrt(self.weight.shape[1])
     self.bias = Tensor.uniform(out_features, low=-bound, high=bound, dtype=c_type) if bias else None
-  def __call__(self, x):
+  def __call__(self, x : Tensor) -> Tensor:
     return x.linear(self.weight.transpose(), self.bias)
 
 
 class PPO_tiny():
-  def __init__(self, state_size = 240, 
-                action_size = 1+len(actions), 
-                value_size = 1, 
-                hidden_space_size = 512, 
-                learning_rate = 0.0001,
-                gamma = 0.97, 
-                lmbda = 0.90, 
-                eps_clip = 0.1, 
-                K_epoch = 2,
+  def __init__(self, state_size : int = 240, 
+                action_size : int = 1+len(actions), 
+                value_size : int = 1, 
+                hidden_space_size : int = 512, 
+                learning_rate : float = 0.0001,
+                gamma : float = 0.97, 
+                lmbda : float = 0.90, 
+                eps_clip : float = 0.1, 
+                K_epoch : int = 2,
                 c_type = dtypes.float32):
 
     self.c_type = dtypes.float32
@@ -384,7 +375,7 @@ class PPO_tiny():
                           [value for key, value in get_state_dict(self.policy_output_layer).items() if isinstance(value, Tensor)],
                           lr=learning_rate)
 
-  def pi(self, input_state, hidden_state):
+  def pi(self, input_state : Tensor, hidden_state : Tensor) -> tuple[Tensor, Tensor]:
     processed_input = self.input_layer(input_state).relu()
     shaper = ((1, 1, processed_input.shape[0]) if len(processed_input.shape) == 1 else (processed_input.shape[0], 1, processed_input.shape[1]))
     reshaped_input = processed_input.reshape(*shaper).realize()
@@ -393,7 +384,7 @@ class PPO_tiny():
     action_probability = policy_output.softmax(axis=2).realize()
     return action_probability, lstm_hidden_state
     
-  def v(self, input_state, hidden_state):
+  def v(self, input_state, hidden_state) -> Tensor:
     processed_input = self.input_layer(input_state).relu()
     shaper = ((1, processed_input.shape[0]) if len(processed_input.shape) == 1 else (processed_input.shape[0], 1, processed_input.shape[1]))
     reshaped_input = processed_input.reshape(*shaper).realize()
@@ -401,10 +392,10 @@ class PPO_tiny():
     value_output = self.value_output_layer(lstm_output)
     return value_output        
       
-  def put_data(self, transition_tuple):
+  def put_data(self, transition_tuple : tuple) -> None:
     self.data.append(transition_tuple)
       
-  def make_batch(self):
+  def make_batch(self) -> Tuple[Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor, Tensor]:
     state_list, action_list, reward_list, next_state_list, action_prob_list, hidden_input_list, hidden_output_list, done_list = [], [], [], [], [], [], [], []
     for transition in self.data:
       state, action, reward, next_state, action_prob, hidden_input, hidden_output, is_done = transition
@@ -430,7 +421,7 @@ class PPO_tiny():
     self.data = []
     return state_tensor.realize(), action_tensor.realize(), reward_tensor.realize(), next_state_tensor.realize(), done_mask_tensor.realize(), action_prob_tensor.realize(), hidden_input_list[0], hidden_output_list[0]
   
-  def train_net(self):
+  def train_net(self) -> None:
 
     state_batch, action_batch, reward_batch, next_state_batch, done_mask, action_prob_batch, first_hidden_state, second_hidden_state = self.make_batch()
     Tensor.no_grad, Tensor.training = False, True
@@ -469,14 +460,14 @@ class PPO_tiny():
 
     
 ############## CYCLE TRAIN/INF ##############
-def training(learning_rate = 0.0003, gamma = 0.97,
-             lmbda = 0.90, eps_clip = 0.1, 
-             K_epoch = 2, state_size = 240, 
-             action_size = 1+len(actions), value_size = 1, 
-             hidden_space_size = 512, minimum_batch_size = 60, 
-             max_steps_limit = 60, episode_count = 2000, 
-             print_interval = 1, path_save_episode = "/home/test1/", 
-             model_path = "model_all.safetensors"):
+def training(learning_rate : float = 0.0003, gamma : float = 0.97,
+             lmbda : float = 0.90, eps_clip : float = 0.1, 
+             K_epoch : int = 2, state_size : int = 240, 
+             action_size : int = 1+len(actions), value_size : int = 1, 
+             hidden_space_size : int = 512, minimum_batch_size : int = 60, 
+             max_steps_limit : int = 60, episode_count : int = 2000, 
+             print_interval : int = 1, path_save_episode : str = "/home/test1/", 
+             model_path : str = "model_all.safetensors") -> None:
   
   # Initialize model
   model =  PPO_tiny(state_size=state_size, 
@@ -495,12 +486,13 @@ def training(learning_rate = 0.0003, gamma = 0.97,
   action_count = load_val(default=np.zeros(1 + len(actions)),filename = path_save_episode+"action_count.pkl")
   episode_scores = []
   
+  #training
   while current_episode < episode_count:
     # Reset var for new episode
     done, max_steps, c = False, 0 , 2
     Tensor.no_grad, Tensor.training = False, False
     hidden_state = Tensor.ones(1,2,model.hidden_space_lstm_size, dtype=model.c_type, requires_grad=False)
-    
+    #init env
     env = KernelEnv(db_path = path_save_episode + 'dataset_training.db',max_n_mouve = max_steps_limit)
     state, _ = env.reset()
     
@@ -514,49 +506,131 @@ def training(learning_rate = 0.0003, gamma = 0.97,
       next_state, reward, done, _, actual_runtime = env.step(action)
       model.put_data((state, action, reward, next_state, action_prob.flatten().detach().numpy()[action], hidden_state, new_hidden_state, done))
 
-      del state , hidden_state
-      state , hidden_state = next_state , new_hidden_state
-      modified_reward = env.init_reward/actual_runtime if reward != env.terminal_reward else -1
-      episode_scores.append([modified_reward , done , action])
-      action_count[action] += 1  # Update action count
-      max_steps += 1
+      del state , hidden_state #ugly
+      state , hidden_state = next_state , new_hidden_state #ugly
+      modified_reward = env.i_r/actual_runtime if reward != env.terminal_reward else -1 #ugly
+      episode_scores.append([modified_reward , done , action]) #ugly
+      action_count[action] += 1  # Update action count #ugly
+      max_steps += 1  #ugly
     force_oom()#force cuda vram reset
   
     if len(model.data) >= minimum_batch_size:
       model.train_net()
-      current_episode += 1
-      save_val(current_episode ,filename= path_save_episode+"state.pkl")
-      save_val(action_count ,filename = path_save_episode+"action_count.pkl")
+      current_episode += 1 #ugly
+      save_val(current_episode ,filename= path_save_episode+"state.pkl") #ugly
+      save_val(action_count ,filename = path_save_episode+"action_count.pkl") #ugly
       
       if current_episode % print_interval == 0:
         avg_score = np.array(split_and_find_max(episode_scores))
-        pos, neg = count_pos_neg(avg_score)
+        pos, neg = count_pos_neg(avg_score) 
         pr_loss= f"# of episode: {current_episode}, avg score: {avg_score.mean():.3f}, repartition positive: {(pos/(neg+pos)) * 100:.3f} % loss: {model.loss:.5f}"
         print(pr_loss)
-        print_to_file(path_save_episode + 'state_model_all.txt', f"ep: {current_episode} | <Compute_time : Done : Action>: {[(a[0], a[1], a[2]) for i, a in enumerate(episode_scores)]}")
-        print_to_file(path_save_episode + 'state_model_all.txt', "||||||||||||||||||||||||||")
-        print_to_file(path_save_episode + 'loss_model_all.txt', pr_loss)
+        print_to_file(path_save_episode + 'state_model_all.txt', f"ep: {current_episode} | <Compute_time : Done : Action>: {[(a[0], a[1], a[2]) for i, a in enumerate(episode_scores)]}") #ugly
+        print_to_file(path_save_episode + 'state_model_all.txt', "||||||||||||||||||||||||||") #ugly
+        print_to_file(path_save_episode + 'loss_model_all.txt', pr_loss) #ugly
         episode_scores.clear()
         safe_save(get_state_dict(model), full_model_path)
         if current_episode % 100 == 0: safe_save(get_state_dict(model), os.path.join(path_save_episode, f"{current_episode}_episode_"+model_path))
         if current_episode % 1 == 0: force_oom()
               
+ # massively ugly/ not tested yet
+class Strategy:
+  def __init__(self, predicted_values : list, predicted_policy : list, strategy : str, max_trials : int):
+    self.predicted_values = np.array(predicted_values)
+    self.predicted_policy = np.array(predicted_policy)
+    self.strategy = strategy
+    self.max_trials = max_trials
+    # Dispatch strategy methods based on the strategy name
+    self.strategy_dispatcher = {
+        "value_filter": self.value_filter,
+        "best_max_trials": self.best_max_trials,
+        "best_max_value": self.best_max_value,
+        "topk_fusmedian": self.topk_fusmedian}
 
-def inference(available_kernels,max_number_of_step=20,
-              path_save_episode = "/home/test1/",model_path= "model_all.safetensors",
-              max_trial = 3, strategies = "topk+fusmedian"):
-      
-  model=PPO_tiny()
-  model_path = os.path.join(path_save_episode, model_path)
+  def execute_strategy(self) -> list:
+    # Execute the chosen strategy
+    return self.strategy_dispatcher[self.strategy]()
+
+  def value_filter(self) -> list:
+    #Selects actions based on value, if none selected, selects top actions up to max_trials
+    # Convert inputs to numpy arrays
+    predicted_values, actions = np.array(self.predicted_values), np.array(self.predicted_policy)
+    # Find indices where predicted values are negative
+    negative_indices = np.where(predicted_values < 0)[0]
+    # Round the negative predicted values to 2 decimal places
+    rounded_values = np.round(predicted_values[negative_indices], 2)
+    # Find unique values and their counts
+    unique_values, counts = np.unique(rounded_values, return_counts=True)
+    # Find unique values that occur only once
+    unique_indices = unique_values[counts == 1]
+    # Find indices of unique values in rounded values
+    no_duplicate_indices = np.isin(rounded_values, unique_indices)
+    # Calculate standard deviation of unique values
+    std_dev = np.std(rounded_values[no_duplicate_indices])
+    # Find values greater than or equal to standard deviation
+    stdev_indices = np.abs(rounded_values[no_duplicate_indices]) >= std_dev
+    # Sort indices based on values
+    sorted_indices = np.argsort(rounded_values[no_duplicate_indices][stdev_indices])
+    # Select actions based on sorted indices
+    filter_action = actions[negative_indices][no_duplicate_indices][stdev_indices][sorted_indices].tolist()
+    # If actions are selected, return them. Else, return top actions up to max_trials
+    return negative_indices[no_duplicate_indices][stdev_indices][sorted_indices].tolist() if len(filter_action) != 0 else np.argsort(-1 * self.predicted_values)[:self.max_trials].tolist()
+
+  def best_max_trials(self) -> list:
+    #Selects the top actions up to max_trials
+    # Return top actions up to max_trials
+    return np.argsort(self.predicted_policy)[::-1][:self.max_trials].tolist()
+
+  def best_max_value(self) -> list:
+    #Selects the top actions based on value up to max_trials
+    # Sort indices based on predicted values and select top actions up to max_trials
+    return np.argsort(-1 * self.predicted_values)[::-1][:self.max_trials].tolist()
+
+  def topk_fusmedian(self) -> list:
+    #A complex strategy involving sorting, intersection, and median calculation
+    #to provide a selection of actions based on a combination of common elements and median values.
+    # Sort indices based on predicted values in descending order and select top 20
+    value_sort_indices = (np.argsort(-1 * self.predicted_values)[::-1])[:20]
+    # Find corresponding actions for sorted indices
+    final_indices = self.predicted_policy[value_sort_indices]
+    # Find common actions between final_indices and top 20 actions
+    common_elements = np.intersect1d(final_indices, self.predicted_policy[:20])
+    # Calculate weights for common elements based on their occurrences
+    weights = len(final_indices) + len(self.predicted_policy[:20]) - \
+              np.searchsorted(final_indices, common_elements) - \
+              np.searchsorted(self.predicted_policy[:20], common_elements)
+    # Sort common elements based on weights in descending order and select top 10
+    sorted_common_elements = common_elements[np.argsort(-weights)].tolist()[:10]
+    # Select top actions up to max_trials as an obvious solution
+    obvious_solution = self.best_max_trials()
+    # Calculate median index of sorted common elements
+    median_idx = len(sorted_common_elements) // 2
+    # Select median element and its neighbors
+    median_and_neighbors = sorted_common_elements[max(0, median_idx-1) : median_idx+2]
+    # Find actions in median_and_neighbors that are not part of the obvious solution
+    depth_solution = np.setdiff1d(median_and_neighbors, obvious_solution)
+    # Concatenate the obvious solution and depth_solution to provide a final set of actions
+    return np.concatenate((self.best_max_trials(), depth_solution)).tolist()
+
+def inference(available_kernels : List[str], max_number_of_step : int = 20,
+              path_save_episode : str = "/home/test1/", model_path : str = "model_all.safetensors",
+              max_trial : int = 3, strategies : int = "topk+fusmedian") -> List[Linearizer]:
+  
+  #load kernel to optimize
   os.remove(path_save_episode + 'dataset_inference.db') if os.path.exists(path_save_episode + 'dataset_inference.db') else None
   db = KernelEnv(available_kernels=available_kernels, db_path = path_save_episode + 'dataset_inference.db', inference_mode=True)
-  len_dataset = len(available_kernels)
-  del available_kernels , db
   
+  #load model
+  model=PPO_tiny()
+  full_model_path = os.path.join(path_save_episode, model_path)
   load_state_dict(model, safe_load(full_model_path)) if os.path.exists(full_model_path) else None
   if model is None: raise(f"Indalid model path at {model_path}")
-  result_states, cache, value_cache = [], [], []
-
+  
+  #init inference var
+  result_states = [] #ugly
+  len_dataset = len(available_kernels) #ugly
+  del available_kernels , db #ugly
+  
   # print("Strategy: ",strategies)
   for kernel in range(len_dataset):
     # Reset for new episode
@@ -566,7 +640,9 @@ def inference(available_kernels,max_number_of_step=20,
     Tensor.ones(1,2,model.hidden_space_lstm_size, dtype=model.c_type, requires_grad=False)
     max_moves, reward_state_pairs = 0, []
     
+    #optimize kernel
     while max_moves < max_number_of_step: 
+      cache, value_cache = [], []
       #get kernel without apply move
       initial_kernel = env.linearized_kernel
       #get policy action distribution
@@ -583,55 +659,36 @@ def inference(available_kernels,max_number_of_step=20,
         value_cache.append(next_action_values.flatten().detach().numpy()[0])
         
       #pick a strategy
-      if strategies == "valuefilter":
-        filter_action = selector_np(value_cache, sorted_indices) 
-        strategy = filter_action if len(filter_action) != 0 else sorted_indices[:max_trial]
-      if strategies == "best_max_trial_policy":
-        strategy = sorted_indices[:max_trial]
-      if strategies == "best_max_trial_value":
-        strategy = sorted_indices[(np.argsort(-1*np.array(value_cache))[::])[:max_trial]]
-      if strategies == "topk+fusmedian": # need a general way to define the slice parameter
-        value_sort_indices = (np.argsort(-1*np.array(value_cache))[::-1])[:20]
-        final_indices = sorted_indices[value_sort_indices] 
-        common_elements_np = np.intersect1d(final_indices, sorted_indices[:20])
-        weights = len(final_indices) + len(sorted_indices[:20]) - np.searchsorted(final_indices, common_elements_np) - np.searchsorted(sorted_indices[:20], common_elements_np)
-        sorted_common_elements = common_elements_np[np.argsort(-weights)].tolist()[:10]
-        obvious_solution= sorted_indices[:max_trial]
-        median_idx = len(sorted_common_elements) // 2
-        median_and_neighbors = sorted_common_elements[max(0, median_idx-1) : median_idx+2]
-        depth_solution = np.setdiff1d(median_and_neighbors, obvious_solution)
-        strategy = np.concatenate((obvious_solution[:max_trial], depth_solution))
-        
+      selected_actions = (strategy := Strategy(value_cache, action_prob.flatten().detach().numpy().tolist(), strategy=strategies, max_trials=max_trial)).execute_strategy()
       #trial and error on selected strategy and keep the best apply action
-      for action in strategy:
+      for action in selected_actions:
         env.linearized_kernel = initial_kernel
         next_state, reward, done, _, orr = env.step(action)
         env.done = False
-        cache.append((orr if reward != env.terminal_reward else env.init_reward , action, done,next_state,env.linearized_kernel))
+        cache.append((orr if reward != env.terminal_reward else env.i_r , action, done,next_state,env.linearized_kernel))
         # if not done: break ##if you want to select the first working mouve only
         
       #cache best result
-      env.linearized_kernel, done = min(cache)[-1], min(cache)[-3]
+      env.linearized_kernel, done = min(cache)[-1], min(cache)[-3] 
       state, hidden_state = min(cache)[-2], new_hidden_state
-      cache, value_cache = [], []
-      max_moves += 1
-      reward_state_pairs.append(min(cache))
-      if done: break
+      max_moves += 1 #ugly
+      reward_state_pairs.append(min(cache)) #ugly
+      if done: break #ugly
       
-    if kernel % 10 == 0: force_oom()
+    if kernel % 10 == 0: force_oom()#force cuda vram reset
     #store and print step result
-    best_reward,best_kernel =  min(reward_state_pairs)[0], min(reward_state_pairs)[-1]
-    action = [act for speed, act, done, *_ in reward_state_pairs if speed <= env.init_reward and not done]
-    result_states.append([kernel, env.init_reward/best_reward,best_reward, env.init_reward, best_reward, best_kernel, action ])
-    kernel_shape = re.sub('__', '_', re.sub(' +', '_', result_states[-1][-2].colored_shape()).strip('_') )
-    print(f"| {'Kernel:':<7} {kernel + remainder:>4}| {'Init Spd:':<10} {(env.init_reward)*1000:>12.3f} ms | {'Up:':<5} {(env.init_reward / best_reward):>10.3f}x | {'New Spd:':<10} {best_reward*1000:>12.3f} ms | {'Act:':<5} {str(action):<60} | {'Kernel shape:':<5} {kernel_shape:<37}")
+    best_reward,best_kernel =  min(reward_state_pairs)[0], min(reward_state_pairs)[-1] #ugly
+    action = [act for speed, act, done, *_ in reward_state_pairs if speed <= env.i_r and not done] #ugly
+    result_states.append([kernel, env.i_r/best_reward,best_reward, env.i_r, best_reward, best_kernel, action ]) #ugly
+    kernel_shape = re.sub('__', '_', re.sub(' +', '_', result_states[-1][-2].colored_shape()).strip('_') ) #ugly
+    print(f"| {'Kernel:':<7} {kernel:>4}| {'Init Spd:':<10} {(env.i_r)*1000:>12.3f} ms | {'Up:':<5} {(env.i_r / best_reward):>10.3f}x | {'New Spd:':<10} {best_reward*1000:>12.3f} ms | {'Act:':<5} {str(action):<60} | {'Kernel shape:':<5} {kernel_shape:<37}")
 
   #print overall result
   total_time_original = np.array([i[3] for i in result_states]).sum() * 1000
   total_time_optimized = np.array([i[2] for i in result_states]).sum() * 1000
   total_speedup = total_time_original / total_time_optimized
   print(f"TOTAL SpeedUP: {total_speedup:.3f}x, Previous Total time: {total_time_original:.3f} ms, New total time: {total_time_optimized:.3f} ms")
-  return return [i[-2] for i in result_states]
+  return [i[-2] for i in result_states]
 
   
 #ENTRY POINT
@@ -641,7 +698,7 @@ if __name__ == "__main__":
   #by default without infer it will perform training
   parser.add_argument('--infer', help='Perform inference', action='store_true')
   #share parameter between inference and training
-  parser.add_argument('--path', help='Path to save episode', default='/home/usr/ubuntu/TinyRL/test5/')
+  parser.add_argument('--path', help='Path to save episode', default='/home/hotmil/ubuntu/TinyRL/test5/')
   parser.add_argument('--model_name', help='model name', default='model_all.safetensors')
   parser.add_argument('--max_steps_limit', type=int, default=60)
   #inference parameter
@@ -670,7 +727,6 @@ if __name__ == "__main__":
     example = Tensor.empty(64, 3, 224, 224)
     available_kernels = extract_ast_kernels(mdl,example)
     del mdl, example
-    # force_oom()
     
     start_time = time.time()
     result = inference(available_kernels,
