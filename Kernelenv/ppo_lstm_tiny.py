@@ -93,6 +93,7 @@ def load_val(default = 0, filename = "state.pkl"):
     with open(f"{filename}", "rb") as f: return pickle.load(f)
   except FileNotFoundError:return default
 
+
 ############## ENV ##############
 import os , sqlite3, time , pickle, math
 import numpy as np
@@ -114,24 +115,16 @@ class KernelEnv:
     self.terminal_reward = terminal_reward#-(math.log(GLOBAL_TIMEOUT)*np.pi)
     self.index = index_to_pick
     self.inference_mode = inference_mode
-    # state_size = 240 #hardcoded in lin_to_feats()
-    # action_size = 1+len(actions) # discret action space
-    # value_size = 1 #learn the Xspeedup reward, continuous value
-    # # hidden_space_size = whatever you want
-    # # print("OBS_size: ",state_size," ACTION_size: ",action_size," VALUE_size: ",value_size, " kernel dataset size: ",len(self.available_kernels))
     self.db_path = db_path
     self.max_n_mouve = max_n_mouve
     self.max_retries = max_retries
     self.init_db()
     if available_kernels is not None: self.add_kernels(available_kernels)
     self.max_global_size= 65536
-
-  def init_db(self):
-    if not os.path.exists(self.db_path):
-      self.update_db("CREATE TABLE kernels (id INTEGER PRIMARY KEY, kernel_data BLOB, last_num_steps INTEGER, total_visits INTEGER)")
-
+    
   def query_db(self, query, args=()):
     for retry in range(self.max_retries):
+      conn = None
       try:
         conn = sqlite3.connect(self.db_path, isolation_level=None)
         c = conn.cursor()
@@ -143,9 +136,11 @@ class KernelEnv:
         if not isinstance(e, sqlite3.OperationalError): print(f'An exception occurred: {e}')
         if retry == self.max_retries - 1: raise
         time.sleep(0.1)
+      finally: if conn is not None: conn.close()
 
   def update_db(self, query, args=()):
     for retry in range(self.max_retries):
+      conn = None
       try:
         conn = sqlite3.connect(self.db_path, isolation_level=None)
         c = conn.cursor()
@@ -157,7 +152,11 @@ class KernelEnv:
         if not isinstance(e, sqlite3.OperationalError): print(f'An exception occurred: {e}')
         if retry == self.max_retries - 1: raise
         time.sleep(0.1)
-              
+      finally: if conn is not None: conn.close() 
+      
+  def init_db(self):
+    if not os.path.exists(self.db_path):
+      self.update_db("CREATE TABLE kernels (id INTEGER PRIMARY KEY, kernel_data BLOB, last_num_steps INTEGER, total_visits INTEGER)")
 
   def add_kernels(self, kernel_list):
     for kernel in kernel_list:
@@ -166,7 +165,7 @@ class KernelEnv:
         res = self.query_db("SELECT * FROM kernels WHERE kernel_data = ?", (serialized_kernel,))
         if len(res) == 0: self.update_db("INSERT INTO kernels (kernel_data, last_num_steps, total_visits) VALUES (?, 0, 0)", (serialized_kernel,))
       else: self.update_db("INSERT INTO kernels (kernel_data, last_num_steps, total_visits) VALUES (?, 0, 0)", (serialized_kernel,))
-      
+
   def priority_game(self):
     data = self.query_db("SELECT id, last_num_steps, total_visits FROM kernels")
     active_indices = np.array([row[0] for row in data])
@@ -181,116 +180,107 @@ class KernelEnv:
     self.update_db(f"UPDATE kernels SET last_num_steps = 0, total_visits = total_visits + 1 WHERE id = {chosen_index}")
     return chosen_index
 
-  def update_kernel_step(self, kernel_id):
-    self.update_db(f"UPDATE kernels SET last_num_steps = last_num_steps + 1 WHERE id = {kernel_id}")
-
   def get_kernel(self, kernel_id):
     data = self.query_db(f"SELECT kernel_data FROM kernels WHERE id = {kernel_id}")
     serialized_kernel = data[0][0]
     return pickle.loads(serialized_kernel)
+
+  def update_kernel_step(self, kernel_id):
+    self.update_db(f"UPDATE kernels SET last_num_steps = last_num_steps + 1 WHERE id = {kernel_id}")
   
   def delete_kernel(self, kernel_id):
     self.update_db(f"DELETE FROM kernels WHERE id = {kernel_id}")
 
   def count_kernels(self):
-    return self.query_db("SELECT COUNT(*) FROM kernels")[0]
+    return self.query_db("SELECT COUNT(*) FROM kernels")
 
   def reset(self):
     while True:
-      if self.inference_mode:
-        self.kernel_pick_index = self.index
-        kernel_pick = self.get_kernel(self.kernel_pick_index)
-      else:
-        self.kernel_pick_index = self.priority_game()
-        kernel_pick = self.get_kernel(self.kernel_pick_index)
-      
-      self.max_regret = []            
       try:
+        self.max_regret = [] 
+        #Select kernel
+        if self.inference_mode:
+          self.kernel_pick_index = self.index
+          kernel_pick = self.get_kernel(self.kernel_pick_index)
+        else:
+          self.kernel_pick_index = self.priority_game()
+          kernel_pick = self.get_kernel(self.kernel_pick_index)
+          
+        #Convert ast kernel to linearizer, get initial speed and state           
         linearized_kernel = ast_str_to_lin(kernel_pick)
         buffer_info = bufs_from_lin(linearized_kernel)
-        init_reward = time_linearizer(linearized_kernel, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
-        if math.isinf(init_reward) or np.isnan(init_reward):
-            raise ValueError("Invalid initial time.")
-        init_state = np.array(lin_to_feats(linearized_kernel))
-        self.init_reward , self.init_state, self.linearized_kernel = init_reward,init_state, linearized_kernel
+        initial_reward = time_linearizer(linearized_kernel, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
+        if math.isinf(initial_reward) or np.isnan(initial_reward): raise ValueError("Invalid initial time.")
+        initial_state = np.array(lin_to_feats(linearized_kernel))
+        
+        #Save result
+        self.i_r , self.i_s, self.l_k = initial_reward, initial_state, linearized_kernel
         self.done = False
-        self.max_regret.append(self.init_reward)
-        return self.init_state, None #gymnasium style
-        # return self.init_state #gym style
+        self.max_regret.append(self.i_r)
+        return self.i_s, None 
+      
       except Exception as e:
+        # For broken kernel, show the error and delete them from dataset
+        if not self.count_kernels()[0] == 0 : self.delete_kernel(self.kernel_pick_index)
         print("REMOVE KERNEL AFTER ERROR: ",e)
-        # self.delete_kernel(self.kernel_pick_index)
         print(f"Number of active kernels after removal: {self.count_kernels()}")
-            
+        if self.count_kernels()[0] == 0 and self.inference_mode: return None, None
   
   def step(self, action_idx, no_reward=False):
+    if self.done: raise Exception("Episode already done, reset the environment first.")
+    #default var for fail action
     reward = self.terminal_reward
     obtained_reward = self.terminal_reward
-    if self.done: raise Exception("Episode already done, reset the environment first.")
-    if action_idx >= 0:
-      try:
-        action_to_apply = actions[action_idx - 1]
-        linearized_kernel_copy = self.linearized_kernel.copy()
-        # Check if action axis is within the shape length of the kernel
-        if action_to_apply.axis >= linearized_kernel_copy.shape_len:
-          raise ValueError("Invalid action: axis out of bounds.")
-        
-        # Check if the action amount matches the axis size and a zero-change operation exists
-        if (linearized_kernel_copy.full_shape[action_to_apply.axis] == action_to_apply.amt and 
-          Opt(action_to_apply.op, action_to_apply.axis, 0) in actions):
-          raise ValueError("Invalid action: action amount matches axis size and a zero-change operation exists.")
-        
-        # Tentatively apply the action to a copy to test for workgroup size constraints
-        linearized_kernel_copy.apply_opt(action_to_apply)
-        up, lcl = 1, 1
-        for s, c in zip(linearized_kernel_copy.full_shape, linearized_kernel_copy.colors()):
-          if c in {"magenta", "yellow"}: up *= s
-          if c in {"cyan", "green", "white"}: lcl *= s
-        if up > 256 or lcl > 256:
-          raise ValueError("Invalid action: exceeds workgroup size constraints.")
-        if not no_reward:
-          buffer_info = bufs_from_lin(linearized_kernel_copy)
-          
-          # Calculate and return the reward
-          compute_time = time_linearizer(linearized_kernel_copy, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
-          if math.isinf(reward) or np.isnan(reward):
-            raise ValueError("Invalid reward.")
-          
-          self.linearized_kernel , obtained_reward = linearized_kernel_copy , compute_time
-          
-          reward = 1 if obtained_reward < min(self.max_regret) else -1
+    
+    try:
+      #select action from the list of available ops and last available linearized kernel
+      action_to_apply = actions[action_idx - 1]
+      linearized_kernel_copy = self.l_k
+      
+      # Check if action axis is within the shape length of the kernel
+      if action_to_apply.axis >= linearized_kernel_copy.shape_len:
+        raise ValueError("Invalid action: axis out of bounds.")
+      # Check if the action amount matches the axis size and a zero-change operation exists
+      if (linearized_kernel_copy.full_shape[action_to_apply.axis] == action_to_apply.amt and 
+        Opt(action_to_apply.op, action_to_apply.axis, 0) in actions):
+        raise ValueError("Invalid action: action amount matches axis size and a zero-change operation exists.")
+      # Tentatively apply the action to a copy to test for workgroup size constraints
+      linearized_kernel_copy.apply_opt(action_to_apply)
+      up, lcl = 1, 1
+      for s, c in zip(linearized_kernel_copy.full_shape, linearized_kernel_copy.colors()):
+        if c in {"magenta", "yellow"}: up *= s
+        if c in {"cyan", "green", "white"}: lcl *= s
+      if up > 256 or lcl > 256: raise ValueError("Invalid action: exceeds workgroup size constraints.")
+      
+      if not no_reward:
+        # Calculate and save the reward
+        buffer_info = bufs_from_lin(linearized_kernel_copy)
+        compute_time = time_linearizer(linearized_kernel_copy, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
+        if math.isinf(reward) or np.isnan(reward): raise ValueError("Invalid reward.")
+        reward = 1 if obtained_reward < min(self.max_regret) else -1
+        self.l_k , obtained_reward = linearized_kernel_copy , compute_time
         # print(linearized_kernel_copy.printbufs())
-      except Exception as e: 
-        # print(f"ILLEGAL MOVE ERROR: {e}") 
-        pass
-
-    self.done = action_idx == 0 or reward == self.terminal_reward
-    state = self.next_state if hasattr(self, 'next_state') else self.init_state
-    if not self.done:
-      try:
-        state = np.array(lin_to_feats(linearized_kernel_copy))
-      except Exception as e:
-        # print(e)
-        self.done = True
-        state = (state*0)+np.pi
-        reward = self.terminal_reward
-    else:
-      state = (state*0)+np.pi
-      reward = self.terminal_reward
         
+    except Exception as e: pass
+      # print(f"ILLEGAL MOVE ERROR: {e}") 
+
+    # Determine if the episode is done and compute the new state
+    self.done = action_idx == 0 or reward == self.terminal_reward
+    state = self.next_state if hasattr(self, 'next_state') else self.i_s
+    if not self.done:
+      try: state = np.array(lin_to_feats(linearized_kernel_copy))
+      except Exception as e:# print(e)
+        self.done, state, reward = True, (state*0)+np.pi, self.terminal_reward
+    else: state, reward = (state*0)+np.pi, self.terminal_reward
+    
+    # Updating next state, max regret, and potentially updating the kernel
     self.next_state = state
     self.max_regret.append(obtained_reward  if reward!=self.terminal_reward else self.max_regret[0])
     if not self.inference_mode: self.update_kernel_step(self.kernel_pick_index)
-    # if reward >= 1 : self.add_kernels([self.linearized_kernel])
-    return self.next_state, reward, self.done, None, obtained_reward #gymnasium style
-    # return next_state, reward, self.done, info #gym style
-
-  def close(self):
-      pass
-
+    return self.next_state, reward, self.done, None, obtained_reward
+7
 
 ############## MODEL ##############
-
 from tinygrad.tensor import Tensor
 from tinygrad.jit import TinyJit
 # from tinygrad.nn import Linear
@@ -310,7 +300,6 @@ def smooth_l1_loss(predicted_value, target_value, reduction='mean', beta=1.0):
   elementwise_difference = predicted_value - target_value
   mask = inf_to(elementwise_difference , beta).realize()
   loss = (mask * (0.5*elementwise_difference**2 / beta)) + ((-1*(mask-1)) * (elementwise_difference.abs() - 0.5*beta)).realize()
-  # loss = Tensor.where(elementwise_difference < beta, 0.5 * elementwise_difference**2 / beta, elementwise_difference - 0.5 * beta)  
   return loss
 
 
@@ -323,7 +312,7 @@ class LSTMCell:
     self.weights_hh = Tensor.uniform(hidden_size * 4, hidden_size, low=-bound, high=bound, dtype=c_type)
     self.bias_ih = Tensor.ones(hidden_size, dtype=c_type).cat(Tensor.zeros(hidden_size * 3,dtype=c_type),dim=0).realize()
     self.bias_hh = Tensor.zeros(hidden_size * 4, dtype=c_type)
-
+    
   def __call__(self, x, hc):
     gates = x.linear(self.weights_ih.T, self.bias_ih) + hc[:x.shape[0]].linear(self.weights_hh.T, self.bias_hh)
     i, f, g, o = gates.chunk(4, 1)
@@ -333,13 +322,14 @@ class LSTMCell:
     h = (o * c.realize().tanh()).dropout(self.dropout).realize()
     return Tensor.cat(h, c).realize()
 
+
 class LSTM:
   def __init__(self, input_size, hidden_size, layers=1, dropout=0,c_type=dtypes.float32):
     self.input_size = input_size
     self.hidden_size = hidden_size
     self.layers = layers
     self.cells = [LSTMCell(input_size, hidden_size, dropout,c_type) if i == 0 else LSTMCell(hidden_size, hidden_size, dropout if i != layers - 1 else 0) for i in range(layers)]
-
+    
   def __call__(self, x, hc):
     if hc is None: hc = Tensor.zeros(self.layers, 2 * x.shape[1], self.hidden_size, requires_grad=False)
     output = None
@@ -352,16 +342,16 @@ class LSTM:
       output = hc[-1:, :x.shape[1]].realize() if output is None else output.cat(hc[-1:, :x.shape[1]], dim=0).realize()
     return output, hc
 
+
 class Linear:
   def __init__(self, in_features, out_features, bias=True,c_type=dtypes.float32):
     self.weight = Tensor.kaiming_uniform(out_features, in_features, a=math.sqrt(5), dtype=c_type)
     bound = 1 / math.sqrt(self.weight.shape[1])
     self.bias = Tensor.uniform(out_features, low=-bound, high=bound, dtype=c_type) if bias else None
-
   def __call__(self, x):
     return x.linear(self.weight.transpose(), self.bias)
 
-from tinygrad.nn.state import get_state_dict
+
 class PPO_tiny():
   def __init__(self, state_size = 240, 
                 action_size = 1+len(actions), 
@@ -393,8 +383,6 @@ class PPO_tiny():
                           [value for key, value in get_state_dict(self.policy_output_layer).items() if isinstance(value, Tensor)] +
                           [value for key, value in get_state_dict(self.policy_output_layer).items() if isinstance(value, Tensor)],
                           lr=learning_rate)
-
-
 
   def pi(self, input_state, hidden_state):
     processed_input = self.input_layer(input_state).relu()
@@ -475,7 +463,9 @@ class PPO_tiny():
       loss = loss.mean()
       loss.backward()
       self.optimizer.step()
+      
     self.loss= loss.detach().numpy()
+    if math.isinf(self.loss) or np.isnan(self.loss): raise ("gradient vanish")
 
     
 ############## CYCLE TRAIN/INF ##############
@@ -487,7 +477,8 @@ def training(learning_rate = 0.0003, gamma = 0.97,
              max_steps_limit = 60, episode_count = 2000, 
              print_interval = 1, path_save_episode = "/home/test1/", 
              model_path = "model_all.safetensors"):
-    
+  
+  # Initialize model
   model =  PPO_tiny(state_size=state_size, 
                 action_size=action_size, 
                 value_size=value_size, 
@@ -497,48 +488,42 @@ def training(learning_rate = 0.0003, gamma = 0.97,
                 lmbda=lmbda, 
                 eps_clip=eps_clip, 
                 K_epoch=K_epoch)
-  
   full_model_path = os.path.join(path_save_episode, model_path)
   load_state_dict(model, safe_load(full_model_path)) if os.path.exists(full_model_path) else None
   # Initialize episode variables
   current_episode = load_val(default = 0,filename = path_save_episode+"state.pkl")
+  action_count = load_val(default=np.zeros(1 + len(actions)),filename = path_save_episode+"action_count.pkl")
   episode_scores = []
-  action_count = load_val(default=np.zeros(1 + len(actions)),filename = path_save_episode+"action_count.pkl")  # Initialize action count for each action
   
   while current_episode < episode_count:
-    # Reset for new episode
-    env = KernelEnv(db_path = path_save_episode + 'dataset_training.db',max_n_mouve = max_steps_limit)
+    # Reset var for new episode
+    done, max_steps, c = False, 0 , 2
     Tensor.no_grad, Tensor.training = False, False
-    state, _ = env.reset()
-    done = False
-    max_steps = 0
-    max_c = 2
-    c = 2 #max_c * np.exp(-10 * current_episode / episode_count) #2.0  #1.0 # 0.5 # UCB exploration parameter
     hidden_state = Tensor.ones(1,2,model.hidden_space_lstm_size, dtype=model.c_type, requires_grad=False)
+    
+    env = KernelEnv(db_path = path_save_episode + 'dataset_training.db',max_n_mouve = max_steps_limit)
+    state, _ = env.reset()
     
     # Collect data for one episode
     while not (done or len(model.data) >= minimum_batch_size or max_steps == max_steps_limit):
       # UCB Action Selection
       action_prob, new_hidden_state = model.pi(Tensor(state.tolist(), dtype=model.c_type, requires_grad=False), hidden_state)
-      # action_values = model.v(torch.from_numpy(state).float().cuda(), new_hidden_state) 
       ucb_values = action_prob.flatten().detach().numpy() + c * np.sqrt(np.log(1+max_steps) / (1 + action_count)) 
       action = np.random.choice(list(range(ucb_values.shape[0])), p=ucb_values/ucb_values.sum())
       # Take action and observe next state and reward
-      next_state, reward, done, _, orr = env.step(action)
+      next_state, reward, done, _, actual_runtime = env.step(action)
       model.put_data((state, action, reward, next_state, action_prob.flatten().detach().numpy()[action], hidden_state, new_hidden_state, done))
-      # print(reward, done,action)
+
       del state , hidden_state
       state , hidden_state = next_state , new_hidden_state
-      modified_reward = env.init_reward/orr if reward != env.terminal_reward else -1
+      modified_reward = env.init_reward/actual_runtime if reward != env.terminal_reward else -1
       episode_scores.append([modified_reward , done , action])
       action_count[action] += 1  # Update action count
       max_steps += 1
-    # force_oom()
+    force_oom()#force cuda vram reset
   
-      
     if len(model.data) >= minimum_batch_size:
       model.train_net()
-      if math.isinf(model.loss) or np.isnan(model.loss): raise ("gradient vanish")
       current_episode += 1
       save_val(current_episode ,filename= path_save_episode+"state.pkl")
       save_val(action_count ,filename = path_save_episode+"action_count.pkl")
@@ -554,7 +539,7 @@ def training(learning_rate = 0.0003, gamma = 0.97,
         episode_scores.clear()
         safe_save(get_state_dict(model), full_model_path)
         if current_episode % 100 == 0: safe_save(get_state_dict(model), os.path.join(path_save_episode, f"{current_episode}_episode_"+model_path))
-        # if current_episode % 1 == 0: force_oom()
+        if current_episode % 1 == 0: force_oom()
               
 
 def inference(available_kernels,max_number_of_step=20,
@@ -570,33 +555,34 @@ def inference(available_kernels,max_number_of_step=20,
   
   load_state_dict(model, safe_load(full_model_path)) if os.path.exists(full_model_path) else None
   if model is None: raise(f"Indalid model path at {model_path}")
-  result_states = []
-  cache=[]
-  value_cache=[]
-  print("Strategy: ",strategies)
+  result_states, cache, value_cache = [], [], []
+
+  # print("Strategy: ",strategies)
   for kernel in range(len_dataset):
-    env = KernelEnv(db_path = path_save_episode + 'dataset_inference.db', inference_mode=True, index_to_pick=kernel+1, max_n_mouve = 60)
-    max_moves = 0
-    reward_state_pairs = []
+    # Reset for new episode
+    env = KernelEnv(db_path = path_save_episode + 'dataset_inference.db', inference_mode=True, index_to_pick=kernel, max_n_mouve = 60)
     state, _ = env.reset()
-    hidden_state = (torch.zeros([1, 1, model.hidden_space_lstm_size], dtype=torch.float),
-                    torch.zeros([1, 1, model.hidden_space_lstm_size], dtype=torch.float))
+    if state is None : return None
+    Tensor.ones(1,2,model.hidden_space_lstm_size, dtype=model.c_type, requires_grad=False)
+    max_moves, reward_state_pairs = 0, []
+    
     while max_moves < max_number_of_step: 
+      #get kernel without apply move
+      initial_kernel = env.linearized_kernel
       #get policy action distribution
       action_prob, new_hidden_state = model.pi(Tensor(state.tolist(), dtype=model.c_type, requires_grad=False), hidden_state)
-      action_prob = action_prob.flatten().detach().numpy() 
-      sorted_indices = action_prob_np.argsort()[::-1] 
+      sorted_indices = action_prob.flatten().detach().numpy().argsort()[::-1] 
+      
       #get value action distribution
-      initk = env.linearized_kernel
       value_cache = []
       for action in sorted_indices:
+        env.linearized_kernel = initial_kernel
         next_state, _, _, _, _ = env.step(action, no_reward=True)
         env.done = False
         next_action_values = model.v(Tensor(next_state.tolist(), dtype=model.c_type, requires_grad=False), new_hidden_state)
         value_cache.append(next_action_values.flatten().detach().numpy()[0])
-        env.linearized_kernel = initk
-      
-      #pick strategy
+        
+      #pick a strategy
       if strategies == "valuefilter":
         filter_action = selector_np(value_cache, sorted_indices) 
         strategy = filter_action if len(filter_action) != 0 else sorted_indices[:max_trial]
@@ -615,37 +601,37 @@ def inference(available_kernels,max_number_of_step=20,
         median_and_neighbors = sorted_common_elements[max(0, median_idx-1) : median_idx+2]
         depth_solution = np.setdiff1d(median_and_neighbors, obvious_solution)
         strategy = np.concatenate((obvious_solution[:max_trial], depth_solution))
-
+        
+      #trial and error on selected strategy and keep the best apply action
       for action in strategy:
-        env.linearized_kernel = initk
+        env.linearized_kernel = initial_kernel
         next_state, reward, done, _, orr = env.step(action)
         env.done = False
         cache.append((orr if reward != env.terminal_reward else env.init_reward , action, done,next_state,env.linearized_kernel))
         # if not done: break ##if you want to select the first working mouve only
-
-      env.linearized_kernel = min(cache)[-1]
-      done = min(cache)[-3]
-      reward_state_pairs.append(min(cache))
-      state , hidden_state = min(cache)[-2] , new_hidden_state
+        
+      #cache best result
+      env.linearized_kernel, done = min(cache)[-1], min(cache)[-3]
+      state, hidden_state = min(cache)[-2], new_hidden_state
+      cache, value_cache = [], []
       max_moves += 1
-      cache=[]
-      value_cache=[]
+      reward_state_pairs.append(min(cache))
       if done: break
-    # torch.cuda.empty_cache()
+      
     if kernel % 10 == 0: force_oom()
+    #store and print step result
     best_reward,best_kernel =  min(reward_state_pairs)[0], min(reward_state_pairs)[-1]
     action = [act for speed, act, done, *_ in reward_state_pairs if speed <= env.init_reward and not done]
-    result_states.append([kernel ,env.init_reward / best_reward,best_reward ,env.init_reward, best_reward,best_kernel,action ])
-    kernel_shape = re.sub(' +', '_', result_states[-1][-2].colored_shape()).strip('_')
-    kernel_shape = re.sub('__', '_', kernel_shape)
+    result_states.append([kernel, env.init_reward/best_reward,best_reward, env.init_reward, best_reward, best_kernel, action ])
+    kernel_shape = re.sub('__', '_', re.sub(' +', '_', result_states[-1][-2].colored_shape()).strip('_') )
     print(f"| {'Kernel:':<7} {kernel + remainder:>4}| {'Init Spd:':<10} {(env.init_reward)*1000:>12.3f} ms | {'Up:':<5} {(env.init_reward / best_reward):>10.3f}x | {'New Spd:':<10} {best_reward*1000:>12.3f} ms | {'Act:':<5} {str(action):<60} | {'Kernel shape:':<5} {kernel_shape:<37}")
 
-
+  #print overall result
   total_time_original = np.array([i[3] for i in result_states]).sum() * 1000
   total_time_optimized = np.array([i[2] for i in result_states]).sum() * 1000
   total_speedup = total_time_original / total_time_optimized
   print(f"TOTAL SpeedUP: {total_speedup:.3f}x, Previous Total time: {total_time_original:.3f} ms, New total time: {total_time_optimized:.3f} ms")
-  return result_states
+  return return [i[-2] for i in result_states]
 
   
 #ENTRY POINT
@@ -655,7 +641,7 @@ if __name__ == "__main__":
   #by default without infer it will perform training
   parser.add_argument('--infer', help='Perform inference', action='store_true')
   #share parameter between inference and training
-  parser.add_argument('--path', help='Path to save episode', default='/home/usr/ubuntu/TinyRL/test5/')
+  parser.add_argument('--path', help='Path to save episode', default='/home/hotmil/ubuntu/TinyRL/test5/')
   parser.add_argument('--model_name', help='model name', default='model_all.safetensors')
   parser.add_argument('--max_steps_limit', type=int, default=60)
   #inference parameter
@@ -671,7 +657,7 @@ if __name__ == "__main__":
   parser.add_argument('--action_size', type=int, default=1 + len(actions))  # Assuming actions is defined elsewhere
   parser.add_argument('--value_size', type=int, default=1)
   parser.add_argument('--hidden_space_size', type=int, default=1024)
-  parser.add_argument('--minimum_batch_size', type=int, default=60)
+  parser.add_argument('--minimum_batch_size', type=int, default=40)
   parser.add_argument('--episode_count', type=int, default=2000)
   parser.add_argument('--print_interval', type=int, default=1)
   args = parser.parse_args()
@@ -684,7 +670,7 @@ if __name__ == "__main__":
     example = Tensor.empty(64, 3, 224, 224)
     available_kernels = extract_ast_kernels(mdl,example)
     del mdl, example
-    force_oom()
+    # force_oom()
     
     start_time = time.time()
     result = inference(available_kernels,
@@ -700,7 +686,7 @@ if __name__ == "__main__":
     dataset = load_worlds(True, True, filter_novariable=True)
     load_db = KernelEnv(available_kernels=dataset, db_path = args.path + 'dataset_training.db')
     del load_db, dataset
-    force_oom()
+    # force_oom()
 
     training(
         learning_rate=args.learning_rate,
@@ -719,5 +705,3 @@ if __name__ == "__main__":
         path_save_episode = args.path,
         model_path= args.model_name
     )
-
-        
