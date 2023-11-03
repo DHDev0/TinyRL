@@ -30,16 +30,16 @@ def format_time(elapsed_time : float) -> str:
   remainder = remainder * 1e6
   milliseconds, remainder = divmod(int(remainder), 1000)
   microseconds = int(remainder)
-  return f"{int(hours):02} H {int(minutes):02} min {int(seconds):02} sec {int(milliseconds):02} ms {int(microseconds):02} us "
+  return f"{int(hours):02} H {int(minutes):02} min {int(seconds):02} sec {int(milliseconds):02} ms {microseconds:02} us "
 
 from tinygrad.tensor import Tensor
 from tinygrad.helpers import getenv
 def force_oom() -> None:
   if 1 in [getenv("TRITON") ,getenv("CUDA")]:
-    try: large_tensor = Tensor.empty(10000000000000).realize()
+    try: large_tensor = Tensor.empty(10000000000000)
     except Exception as e: pass
 
-def split_and_find_max(list_of_lists : list)  -> List[List[Union[float, bool, int]]]:
+def split_and_find_max(list_of_lists : list) -> List[List[Union[float, bool, int]]]:
   stacked_list = []
   temp_list = []
   for inner_list in list_of_lists:
@@ -49,15 +49,14 @@ def split_and_find_max(list_of_lists : list)  -> List[List[Union[float, bool, in
       temp_list = []
   if temp_list:  
     stacked_list.append(temp_list)
-  max_values = [max(stack, key=lambda x: x[0])[0] for stack in stacked_list]
-  return max_values
+  return [max(stack, key=lambda x: x[0])[0] for stack in stacked_list]
 
 # #extract custom kernel to use in KernelEnv
 from tinygrad.tensor import Tensor
 from tinygrad.ops import LoadOps, Device, Compiled
 from typing import List, Any
 def extract_ast_kernels(mdl : Callable, example : Tensor) -> List[str]:
-  device: Compiled = Device[Device.DEFAULT]
+  # device: Compiled = Device[Device.DEFAULT]
   print(f"optimizing for {Device.DEFAULT}")
   seen = set()
   mdl(example).lazydata.schedule(seen)
@@ -90,7 +89,7 @@ import numpy as np
 from tinygrad.tensor import Tensor
 from tinygrad.features.search import actions, bufs_from_lin, time_linearizer
 from extra.optimization.helpers import load_worlds, ast_str_to_lin, lin_to_feats
-from tinygrad.codegen.optimizer import Opt
+from tinygrad.codegen.kernel import Opt
 
 class KernelEnv:
   def __init__(self,
@@ -111,7 +110,7 @@ class KernelEnv:
     self.init_db()
     if available_kernels is not None: self.add_kernels(available_kernels)
     self.max_global_size= 65536
-    
+  
   def query_db(self, query : str, args : tuple =()) -> tuple:
     for retry in range(self.max_retries):
       conn = None
@@ -197,25 +196,26 @@ class KernelEnv:
         else:
           self.kernel_pick_index = self.priority_game()
           kernel_pick = self.get_kernel(self.kernel_pick_index)
-          
+
         #Convert ast kernel to linearizer, get initial kernel speed and state           
         linearized_kernel = ast_str_to_lin(kernel_pick)
         buffer_info = bufs_from_lin(linearized_kernel)
-        initial_reward = time_linearizer(linearized_kernel, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
+        initial_reward = time_linearizer(linearized_kernel, buffer_info, allow_test_size=True, max_global_size=self.max_global_size)
         if math.isinf(initial_reward) or np.isnan(initial_reward): raise ValueError("Invalid initial time.")
         initial_state = np.array(lin_to_feats(linearized_kernel))
-        
+
         #Save result
         self.i_r , self.i_s, self.l_k = initial_reward, initial_state, linearized_kernel
         self.done = False
         self.max_regret.append(self.i_r)
         return self.i_s, None 
-      
+
       except Exception as e:
         # For broken kernel, show the error and delete them from dataset
-        if not self.count_kernels()[0] == 0 : self.delete_kernel(self.kernel_pick_index)
+        if self.count_kernels()[0] != 0: self.delete_kernel(self.kernel_pick_index)
         print("REMOVE KERNEL AFTER ERROR: ",e)
         print(f"Number of active kernels after removal: {self.count_kernels()[0]}")
+        raise
         if self.count_kernels()[0] == 0 and self.inference_mode: return None, None
   
   def step(self, action_idx : int , no_reward : bool = False) -> Tuple[np.ndarray, float, bool, None, float]:
@@ -227,7 +227,7 @@ class KernelEnv:
     try:
       #select action from the list of available ops and last available linearized kernel
       action_to_apply = actions[action_idx - 1]
-      linearized_kernel_copy = self.l_k
+      linearized_kernel_copy = self.l_k.copy()
       
       # Check if action axis is within the shape length of the kernel
       if action_to_apply.axis >= linearized_kernel_copy.shape_len:
@@ -247,7 +247,7 @@ class KernelEnv:
       if not no_reward:
         # Calculate and save the reward
         buffer_info = bufs_from_lin(linearized_kernel_copy)
-        obtained_reward = time_linearizer(linearized_kernel_copy, buffer_info, allow_test_size=True, should_copy=True, max_global_size=self.max_global_size)
+        obtained_reward = time_linearizer(linearized_kernel_copy, buffer_info, allow_test_size=True, max_global_size=self.max_global_size)
         if math.isinf(reward) or np.isnan(reward): raise ValueError("Invalid reward.")
         reward = 1. if obtained_reward < min(self.max_regret) else -1.
         self.l_k  = linearized_kernel_copy
@@ -270,12 +270,11 @@ class KernelEnv:
     self.max_regret.append(obtained_reward  if reward!=self.terminal_reward else self.max_regret[0])
     if not self.inference_mode: self.update_kernel_step(self.kernel_pick_index)
     return self.next_state, reward, self.done, None, obtained_reward
-7
 
 ############## MODEL ##############
 from tinygrad.tensor import Tensor
 from tinygrad.jit import TinyJit
-# from tinygrad.nn import Linear
+from tinygrad.nn import Linear
 from tinygrad.helpers import dtypes
 from tinygrad.nn.optim import Adam
 from tinygrad.nn.state import get_parameters
@@ -291,9 +290,10 @@ def inf_to(x : Tensor,y : Tensor) -> Tensor: return (1-sgn(x-y))/2
 def sup_to(x : Tensor,y : Tensor) -> Tensor: return (1+sgn(x-y))/2
 def smooth_l1_loss(predicted_value : Tensor, target_value : Tensor, reduction : str = 'mean', beta : float = 1.0) -> Tensor:
   elementwise_difference = predicted_value - target_value
-  mask = inf_to(elementwise_difference , beta).realize()
-  loss = (mask * (0.5*elementwise_difference**2 / beta)) + ((-1*(mask-1)) * (elementwise_difference.abs() - 0.5*beta)).realize()
-  return loss
+  mask = inf_to(elementwise_difference , beta)
+  return (mask * (0.5 * elementwise_difference**2 / beta)) + (
+      (-1 *
+       (mask - 1)) * (elementwise_difference.abs() - 0.5 * beta))
 
 
 import math
@@ -303,16 +303,16 @@ class LSTMCell:
     bound = math.sqrt(1 / hidden_size)
     self.weights_ih = Tensor.uniform(hidden_size * 4, input_size, low=-bound, high=bound, dtype=c_type)
     self.weights_hh = Tensor.uniform(hidden_size * 4, hidden_size, low=-bound, high=bound, dtype=c_type)
-    self.bias_ih = Tensor.ones(hidden_size, dtype=c_type).cat(Tensor.zeros(hidden_size * 3,dtype=c_type),dim=0).realize()
+    self.bias_ih = Tensor.ones(hidden_size, dtype=c_type).cat(Tensor.zeros(hidden_size * 3,dtype=c_type),dim=0)
     self.bias_hh = Tensor.zeros(hidden_size * 4, dtype=c_type)
   def __call__(self, x : Tensor, hc : Tensor) -> Tensor:
     gates = x.linear(self.weights_ih.T, self.bias_ih) + hc[:x.shape[0]].linear(self.weights_hh.T, self.bias_hh)
     i, f, g, o = gates.chunk(4, 1)
-    i, f, g, o = i.realize(), f.realize(), g.realize(), o.realize()
+    i, f, g, o = i, f, g, o
     i, f, g, o = i.sigmoid(), f.sigmoid(), g.tanh(), o.sigmoid()
-    c = (f * hc[x.shape[0]:].realize()) + (i * g)
-    h = (o * c.realize().tanh()).dropout(self.dropout).realize()
-    return Tensor.cat(h, c).realize()
+    c = (f * hc[x.shape[0]:]) + (i * g)
+    h = (o * c.tanh()).dropout(self.dropout)
+    return Tensor.cat(h, c)
 
 
 class LSTM:
@@ -327,20 +327,12 @@ class LSTM:
     # forward pass through layer
     for t in range(x.shape[0]):
       new_hc = [x[t]]
-      for i, cell in enumerate(self.cells):
-        new_hc.append( cell(new_hc[i][:x[t].shape[0]], hc[i]) )
-      hc = Tensor.stack(new_hc[1:]).realize()
-      output = hc[-1:, :x.shape[1]].realize() if output is None else output.cat(hc[-1:, :x.shape[1]], dim=0).realize()
+      new_hc.extend(
+          cell(new_hc[i][:x[t].shape[0]], hc[i])
+          for i, cell in enumerate(self.cells))
+      hc = Tensor.stack(new_hc[1:])
+      output = hc[-1:, :x.shape[1]] if output is None else output.cat(hc[-1:, :x.shape[1]], dim=0)
     return output, hc
-
-
-class Linear:
-  def __init__(self, in_features : int, out_features : int, bias : bool = True, c_type : dtypes = dtypes.float32):
-    self.weight = Tensor.kaiming_uniform(out_features, in_features, a=math.sqrt(5), dtype=c_type)
-    bound = 1 / math.sqrt(self.weight.shape[1])
-    self.bias = Tensor.uniform(out_features, low=-bound, high=bound, dtype=c_type) if bias else None
-  def __call__(self, x : Tensor) -> Tensor:
-    return x.linear(self.weight.transpose(), self.bias)
 
 
 class PPO_tiny():
@@ -365,10 +357,10 @@ class PPO_tiny():
     self.data = []
     self.hidden_space_size = hidden_space_size
     self.hidden_space_lstm_size = hidden_space_size // 2
-    self.input_layer = Linear(state_size, hidden_space_size,c_type=c_type)
+    self.input_layer = Linear(state_size, hidden_space_size)
     self.lstm_layer = LSTM(hidden_space_size, hidden_space_size // 2,c_type=c_type)
-    self.policy_output_layer = Linear(hidden_space_size // 2, action_size,c_type=c_type)
-    self.value_output_layer = Linear(hidden_space_size // 2, value_size,c_type=c_type)
+    self.policy_output_layer = Linear(hidden_space_size // 2, action_size)
+    self.value_output_layer = Linear(hidden_space_size // 2, value_size)
     self.optimizer = Adam([value for key, value in get_state_dict(self.input_layer).items() if isinstance(value, Tensor)] +
                           [value for i in self.lstm_layer.cells for key, value in get_state_dict(i).items() if isinstance(value, Tensor)] + 
                           [value for key, value in get_state_dict(self.policy_output_layer).items() if isinstance(value, Tensor)] +
@@ -378,19 +370,19 @@ class PPO_tiny():
   def pi(self, input_state : Tensor, hidden_state : Tensor) -> tuple[Tensor, Tensor]:
     processed_input = self.input_layer(input_state).relu()
     shaper = ((1, 1, processed_input.shape[0]) if len(processed_input.shape) == 1 else (processed_input.shape[0], 1, processed_input.shape[1]))
-    reshaped_input = processed_input.reshape(*shaper).realize()
+    reshaped_input = processed_input.reshape(*shaper)
     lstm_output, lstm_hidden_state = self.lstm_layer(reshaped_input, hidden_state)
     policy_output = self.policy_output_layer(lstm_output)
-    action_probability = policy_output.softmax(axis=2).realize()
-    return action_probability, lstm_hidden_state
+    action_probability = policy_output.softmax(axis=2)
+    return action_probability.realize(), lstm_hidden_state.realize()
     
   def v(self, input_state, hidden_state) -> Tensor:
     processed_input = self.input_layer(input_state).relu()
-    shaper = ((1, processed_input.shape[0]) if len(processed_input.shape) == 1 else (processed_input.shape[0], 1, processed_input.shape[1]))
-    reshaped_input = processed_input.reshape(*shaper).realize()
+    shaper = ((1, 1, processed_input.shape[0]) if len(processed_input.shape) == 1 else (processed_input.shape[0], 1, processed_input.shape[1]))
+    reshaped_input = processed_input.reshape(*shaper)
     lstm_output, lstm_hidden_state = self.lstm_layer(reshaped_input, hidden_state)
     value_output = self.value_output_layer(lstm_output)
-    return value_output        
+    return value_output.realize()        
       
   def put_data(self, transition_tuple : tuple) -> None:
     self.data.append(transition_tuple)
@@ -419,7 +411,7 @@ class PPO_tiny():
     Tensor(action_prob_list, dtype=self.c_type, requires_grad=False)
     
     self.data = []
-    return state_tensor.realize(), action_tensor.realize(), reward_tensor.realize(), next_state_tensor.realize(), done_mask_tensor.realize(), action_prob_tensor.realize(), hidden_input_list[0], hidden_output_list[0]
+    return state_tensor, action_tensor, reward_tensor, next_state_tensor, done_mask_tensor, action_prob_tensor, hidden_input_list[0], hidden_output_list[0]
   
   def train_net(self) -> None:
 
@@ -427,9 +419,9 @@ class PPO_tiny():
     Tensor.no_grad, Tensor.training = False, True
     
     for _ in range(self.K_epoch):
-      next_state_value = self.v(next_state_batch, second_hidden_state).squeeze(1).realize()
+      next_state_value = self.v(next_state_batch, second_hidden_state).squeeze(1)
       td_target = reward_batch + self.gamma * next_state_value * done_mask
-      state_value = self.v(state_batch, first_hidden_state).squeeze(1).realize()
+      state_value = self.v(state_batch, first_hidden_state).squeeze(1)
       td_error = td_target - state_value
       td_error = td_error.detach().numpy()
       
@@ -439,16 +431,16 @@ class PPO_tiny():
         advantage = self.gamma * self.lmbda * advantage + delta[0]
         advantage_list.append([advantage])
       advantage_list.reverse()
-      advantage_tensor = Tensor(advantage_list, dtype=self.c_type, requires_grad=False).realize()
+      advantage_tensor = Tensor(advantage_list, dtype=self.c_type, requires_grad=False)
       
       pi, _ = self.pi(state_batch, first_hidden_state)
-      pi_action = pi.squeeze(1).gather(idx=action_batch, dim=1).realize()
+      pi_action = pi.squeeze(1).gather(idx=action_batch, dim=1)
       ratio = (pi_action.log() - action_prob_batch.log()).exp()
       surrogate1 = ratio * advantage_tensor 
-      surrogate2 = (ratio.clip(1 - self.eps_clip, 1 + self.eps_clip) * advantage_tensor).realize()
+      surrogate2 = (ratio.clip(1 - self.eps_clip, 1 + self.eps_clip) * advantage_tensor)
       diff = (surrogate1 < surrogate2).detach()
       surrogate = (diff*surrogate1) + (surrogate2*(-1*(diff-1)))
-      loss = -surrogate.realize() + smooth_l1_loss(state_value, td_target)
+      loss = -surrogate + smooth_l1_loss(state_value, td_target)
       
       self.optimizer.zero_grad()
       loss = loss.mean()
@@ -457,12 +449,115 @@ class PPO_tiny():
       
     self.loss= loss.detach().numpy()
     if math.isinf(self.loss) or np.isnan(self.loss): raise ("gradient vanish")
-
     
+
+# import ray
+# import logging
+# import psutil
+
+# from multiprocessing import Pool
+# # @ray.remote
+# def handle_env(env, action=None):
+#   print(env,action)
+#   state = env.reset()[0]
+#   return state, env  # Return both state and the env object
+#   # next_state, reward, done, _, actual_runtime = env.step(action)
+#   # return (next_state, reward, done, _, actual_runtime), env  # Return result and env
+
+# import multiprocessing
+
+# from tinygrad.features.search import actions
+# ############## CYCLE TRAIN/INF ##############
+# def training(learning_rate : float = 0.0003, gamma : float = 0.97,
+#              lmbda : float = 0.90, eps_clip : float = 0.1, 
+#              K_epoch : int = 2, state_size : int = 240, 
+#              action_size : int = 1+len(actions), value_size : int = 1, 
+#              hidden_space_size : int = 512, minimum_batch_size : int = 60, 
+#              max_steps_limit : int = 60, episode_count : int = 2000, 
+#              print_interval : int = 1, path_save_episode : str = "/home/test1/", 
+#              model_path : str = "model_all.safetensors") -> None:
+  
+#   # Initialize model
+#   model =  PPO_tiny(state_size=state_size, 
+#                 action_size=action_size, 
+#                 value_size=value_size, 
+#                 hidden_space_size=hidden_space_size,
+#                 learning_rate=learning_rate,
+#                 gamma=gamma, 
+#                 lmbda=lmbda, 
+#                 eps_clip=eps_clip, 
+#                 K_epoch=K_epoch)
+#   multiprocessing.set_start_method('spawn')
+#   cpu_cores = multiprocessing.cpu_count()
+#   pool = multiprocessing.Pool(cpu_cores-1)
+#   full_model_path = os.path.join(path_save_episode, model_path)
+#   load_state_dict(model, safe_load(full_model_path)) if os.path.exists(full_model_path) else None
+#   # Initialize episode variables
+#   current_episode = load_val(default=0,filename=f"{path_save_episode}state.pkl")
+#   action_count = load_val(default=np.ones(action_size),filename=f"{path_save_episode}action_count.pkl")
+#   episode_scores = []
+#   print(1)
+#   # total_memory = psutil.virtual_memory().total
+#   # ray.init(num_gpus=1, num_cpus=psutil.cpu_count(), logging_level=logging.ERROR)
+#   #training
+#   while current_episode < episode_count:
+#     # Reset var for new episode
+#     done, c = False, 1
+#     Tensor.no_grad, Tensor.training = False, False
+#     envs = [(KernelEnv( db_path=f'{path_save_episode}dataset_training.db', max_n_mouve=max_steps_limit),) for _ in range(1)]
+#     # states = ray.get([handle_env.remote(args) for args in envs])
+#     initial_states = pool.starmap(handle_env, envs)
+#     states, envs = zip(*initial_states)  # Unpack states and envs
+#     hidden_states = [Tensor.ones(1,2,model.hidden_space_lstm_size, dtype=model.c_type, requires_grad=False)] * len(envs)
+
+#     while len(model.data) < minimum_batch_size:
+#       action_probs, new_hidden_states = zip(*[model.pi(Tensor(state.tolist(), dtype=model.c_type, requires_grad=False), hidden) for state, hidden in zip(states, hidden_states)])
+#       log_term = c * np.sqrt(np.log(1 + sum(action_count)))
+#       actions = [(np.random.choice( a=len(action_prob.flatten().detach().numpy().tolist()), p=(action_prob.flatten().detach().numpy() + log_term / (1 + np.array(action_count))).flatten() / np.sum(action_prob.flatten().detach().numpy() + log_term / (1 + np.array(action_count)))),) for action_prob in action_probs]
+#       # actions = [np.argmax(action_prob.flatten().detach().numpy() + c * np.sqrt(np.log(1 + sum(action_count)) / (1 + np.array(action_count)))) for action_prob in action_probs]
+#       # np.random.choice(list(range(ucb_values.shape[0])), p=ucb_values/ucb_values.sum())
+#       # results = ray.get([handle_env.remote(arg1,arg2) for arg1,arg2 in zip(envs, actions)])
+#       step_results = pool.starmap(handle_env, zip(envs, actions))
+#       print(step_results)
+#       results, envs = zip(*step_results)  # Unpack step details and envs
+#       for i, result in enumerate(results):
+#         next_state, reward, done, _, actual_runtime = result
+#         action_count[actions[i]] += 1
+#         states[i], hidden_states[i] = (envs[i].reset()[0], None) if done else (next_state, new_hidden_states[i])
+#         modified_reward = reward / actual_runtime if reward != envs[i].terminal_reward else -1
+#         model.put_data((states[i], actions[i], modified_reward, next_state, action_probs[i][actions[i]], hidden_states[i], new_hidden_states[i], done))
+#         episode_scores.append([modified_reward , done , actions[i]])
+#         if done: del envs[i]
+#         if len(envs) == 0: break
+
+#     force_oom()#force cuda vram reset
+
+#     if len(model.data) >= minimum_batch_size:
+#       model.data = model.data[:minimum_batch_size]
+#       model.train_net()
+#       current_episode += 1 #ugly
+#       save_val(current_episode, filename=f"{path_save_episode}state.pkl")
+#       save_val(action_count, filename=f"{path_save_episode}action_count.pkl")
+
+#       if current_episode % print_interval == 0:
+#         avg_score = np.array(split_and_find_max(episode_scores))
+#         pos, neg = count_pos_neg(avg_score) 
+#         pr_loss= f"# of episode: {current_episode}, avg score: {avg_score.mean():.3f}, repartition positive: {(pos/(neg+pos)) * 100:.3f} % loss: {model.loss:.5f}"
+#         print(pr_loss)
+#         print_to_file(path_save_episode + 'state_model_all.txt', f"ep: {current_episode} | <Compute_time : Done : Action>: {[(a[0], a[1], a[2]) for i, a in enumerate(episode_scores)]}") #ugly
+#         print_to_file(path_save_episode + 'state_model_all.txt', "||||||||||||||||||||||||||") #ugly
+#         print_to_file(path_save_episode + 'loss_model_all.txt', pr_loss) #ugly
+#         episode_scores.clear()
+#         safe_save(get_state_dict(model), full_model_path)
+#         if current_episode % 100 == 0: safe_save(get_state_dict(model), os.path.join(path_save_episode, f"{current_episode}_episode_"+model_path))
+#         if current_episode % 1 == 0: force_oom()
+#   pool.close()
+#   pool.join()
+  # ray.shutdown()
 ############## CYCLE TRAIN/INF ##############
 def training(learning_rate : float = 0.0003, gamma : float = 0.97,
              lmbda : float = 0.90, eps_clip : float = 0.1, 
-             K_epoch : int = 2, state_size : int = 240, 
+             K_epoch : int = 2, state_size : int = 1021, 
              action_size : int = 1+len(actions), value_size : int = 1, 
              hidden_space_size : int = 512, minimum_batch_size : int = 60, 
              max_steps_limit : int = 60, episode_count : int = 2000, 
@@ -483,16 +578,16 @@ def training(learning_rate : float = 0.0003, gamma : float = 0.97,
   load_state_dict(model, safe_load(full_model_path)) if os.path.exists(full_model_path) else None
   # Initialize episode variables
   current_episode = load_val(default = 0,filename = path_save_episode+"state.pkl")
-  action_count = load_val(default=np.zeros(1 + len(actions)),filename = path_save_episode+"action_count.pkl")
+  action_count = load_val(default=np.ones(1 + len(actions)),filename = path_save_episode+"action_count.pkl")
   episode_scores = []
   
   #training
   while current_episode < episode_count:
     # Reset var for new episode
-    done, max_steps, c = False, 0 , 2
+    done, max_steps, c = False, 0 , 1
     Tensor.no_grad, Tensor.training = False, False
+    
     hidden_state = Tensor.ones(1,2,model.hidden_space_lstm_size, dtype=model.c_type, requires_grad=False)
-    #init env
     env = KernelEnv(db_path = path_save_episode + 'dataset_training.db',max_n_mouve = max_steps_limit)
     state, _ = env.reset()
     
@@ -500,7 +595,7 @@ def training(learning_rate : float = 0.0003, gamma : float = 0.97,
     while not (done or len(model.data) >= minimum_batch_size or max_steps == max_steps_limit):
       # UCB Action Selection
       action_prob, new_hidden_state = model.pi(Tensor(state.tolist(), dtype=model.c_type, requires_grad=False), hidden_state)
-      ucb_values = action_prob.flatten().detach().numpy() + c * np.sqrt(np.log(1+max_steps) / (1 + action_count)) 
+      ucb_values = action_prob.flatten().detach().numpy() + c * np.sqrt(np.log(1+max_steps) / (action_count)) 
       action = np.random.choice(list(range(ucb_values.shape[0])), p=ucb_values/ucb_values.sum())
       # Take action and observe next state and reward
       next_state, reward, done, _, actual_runtime = env.step(action)
@@ -530,10 +625,10 @@ def training(learning_rate : float = 0.0003, gamma : float = 0.97,
         print_to_file(path_save_episode + 'loss_model_all.txt', pr_loss) #ugly
         episode_scores.clear()
         safe_save(get_state_dict(model), full_model_path)
-        if current_episode % 100 == 0: safe_save(get_state_dict(model), os.path.join(path_save_episode, f"{current_episode}_episode_"+model_path))
+        if current_episode % 10 == 0: safe_save(get_state_dict(model), os.path.join(path_save_episode, f"{current_episode}_episode_"+model_path))
         if current_episode % 1 == 0: force_oom()
               
- # massively ugly/ not tested yet
+#  massively ugly/ not tested yet
 class Strategy:
   def __init__(self, predicted_values : list, predicted_policy : list, strategy : str, max_trials : int):
     self.predicted_values = np.array(predicted_values)
@@ -545,7 +640,7 @@ class Strategy:
         "value_filter": self.value_filter,
         "best_max_trials": self.best_max_trials,
         "best_max_value": self.best_max_value,
-        "topk_fusmedian": self.topk_fusmedian}
+        "topk+fusmedian": self.topk_fusmedian}
 
   def execute_strategy(self) -> list:
     # Execute the chosen strategy
@@ -612,16 +707,31 @@ class Strategy:
     # Concatenate the obvious solution and depth_solution to provide a final set of actions
     return np.concatenate((self.best_max_trials(), depth_solution)).tolist()
 
+
+
 def inference(available_kernels : List[str], max_number_of_step : int = 20,
               path_save_episode : str = "/home/test1/", model_path : str = "model_all.safetensors",
-              max_trial : int = 3, strategies : int = "topk+fusmedian") -> List[Linearizer]:
+              max_trial : int = 3, strategies : int = "topk+fusmedian",
+              learning_rate : float = 0.0003, gamma : float = 0.97,
+              lmbda : float = 0.90, eps_clip : float = 0.1, 
+              K_epoch : int = 2, state_size : int = 1021, 
+              action_size : int = 1+len(actions), value_size : int = 1, 
+              hidden_space_size : int = 51) -> List[Linearizer]:
   
   #load kernel to optimize
   os.remove(path_save_episode + 'dataset_inference.db') if os.path.exists(path_save_episode + 'dataset_inference.db') else None
   db = KernelEnv(available_kernels=available_kernels, db_path = path_save_episode + 'dataset_inference.db', inference_mode=True)
   
   #load model
-  model=PPO_tiny()
+  model =  PPO_tiny(state_size=state_size, 
+                action_size=action_size, 
+                value_size=value_size, 
+                hidden_space_size=hidden_space_size,
+                learning_rate=learning_rate,
+                gamma=gamma, 
+                lmbda=lmbda, 
+                eps_clip=eps_clip, 
+                K_epoch=K_epoch)
   full_model_path = os.path.join(path_save_episode, model_path)
   load_state_dict(model, safe_load(full_model_path)) if os.path.exists(full_model_path) else None
   if model is None: raise(f"Indalid model path at {model_path}")
@@ -634,25 +744,24 @@ def inference(available_kernels : List[str], max_number_of_step : int = 20,
   # print("Strategy: ",strategies)
   for kernel in range(len_dataset):
     # Reset for new episode
-    env = KernelEnv(db_path = path_save_episode + 'dataset_inference.db', inference_mode=True, index_to_pick=kernel, max_n_mouve = 60)
+    env = KernelEnv(db_path = path_save_episode + 'dataset_inference.db', inference_mode=True, index_to_pick=kernel+1, max_n_mouve = 60)
     state, _ = env.reset()
     if state is None : return None
-    Tensor.ones(1,2,model.hidden_space_lstm_size, dtype=model.c_type, requires_grad=False)
+    hidden_state = Tensor.ones(1,2,model.hidden_space_lstm_size, dtype=model.c_type, requires_grad=False)
     max_moves, reward_state_pairs = 0, []
     
     #optimize kernel
     while max_moves < max_number_of_step: 
       cache, value_cache = [], []
       #get kernel without apply move
-      initial_kernel = env.linearized_kernel
+      initial_kernel = env.l_k
       #get policy action distribution
       action_prob, new_hidden_state = model.pi(Tensor(state.tolist(), dtype=model.c_type, requires_grad=False), hidden_state)
       sorted_indices = action_prob.flatten().detach().numpy().argsort()[::-1] 
-      
       #get value action distribution
       value_cache = []
       for action in sorted_indices:
-        env.linearized_kernel = initial_kernel
+        env.l_k = initial_kernel
         next_state, _, _, _, _ = env.step(action, no_reward=True)
         env.done = False
         next_action_values = model.v(Tensor(next_state.tolist(), dtype=model.c_type, requires_grad=False), new_hidden_state)
@@ -662,20 +771,20 @@ def inference(available_kernels : List[str], max_number_of_step : int = 20,
       selected_actions = (strategy := Strategy(value_cache, action_prob.flatten().detach().numpy().tolist(), strategy=strategies, max_trials=max_trial)).execute_strategy()
       #trial and error on selected strategy and keep the best apply action
       for action in selected_actions:
-        env.linearized_kernel = initial_kernel
+        env.l_k = initial_kernel
         next_state, reward, done, _, orr = env.step(action)
         env.done = False
-        cache.append((orr if reward != env.terminal_reward else env.i_r , action, done,next_state,env.linearized_kernel))
+        cache.append((orr if reward != env.terminal_reward else env.i_r , action, done,next_state,env.l_k))
         # if not done: break ##if you want to select the first working mouve only
         
       #cache best result
-      env.linearized_kernel, done = min(cache)[-1], min(cache)[-3] 
+      env.l_k, done = min(cache)[-1], min(cache)[-3] 
       state, hidden_state = min(cache)[-2], new_hidden_state
       max_moves += 1 #ugly
       reward_state_pairs.append(min(cache)) #ugly
       if done: break #ugly
       
-    if kernel % 10 == 0: force_oom()#force cuda vram reset
+    if kernel % 1 == 0: force_oom()#force cuda vram reset
     #store and print step result
     best_reward,best_kernel =  min(reward_state_pairs)[0], min(reward_state_pairs)[-1] #ugly
     action = [act for speed, act, done, *_ in reward_state_pairs if speed <= env.i_r and not done] #ugly
@@ -698,23 +807,23 @@ if __name__ == "__main__":
   #by default without infer it will perform training
   parser.add_argument('--infer', help='Perform inference', action='store_true')
   #share parameter between inference and training
-  parser.add_argument('--path', help='Path to save episode', default='/home/usr/ubuntu/TinyRL/test5/')
+  parser.add_argument('--path', help='Path to save episode', default='/home/hotmil/ubuntu/TinyRL/test7/')
   parser.add_argument('--model_name', help='model name', default='model_all.safetensors')
   parser.add_argument('--max_steps_limit', type=int, default=60)
   #inference parameter
   parser.add_argument('--max_inference_trial', type=int, default=3)
-  parser.add_argument('--inference_strategy', type=str, default="topk+fusmedian")
+  parser.add_argument('--inference_strategy', type=str, default="best_max_trials")
   #training parameter
-  parser.add_argument('--learning_rate', type=float, default=0.0003)
+  parser.add_argument('--learning_rate', type=float, default=0.001)
   parser.add_argument('--gamma', type=float, default=0.97)
   parser.add_argument('--lmbda', type=float, default=0.90)
   parser.add_argument('--eps_clip', type=float, default=0.1)
   parser.add_argument('--K_epoch', type=int, default=2)
-  parser.add_argument('--state_size', type=int, default=240)
+  parser.add_argument('--state_size', type=int, default=1021)
   parser.add_argument('--action_size', type=int, default=1 + len(actions))  # Assuming actions is defined elsewhere
   parser.add_argument('--value_size', type=int, default=1)
-  parser.add_argument('--hidden_space_size', type=int, default=1024)
-  parser.add_argument('--minimum_batch_size', type=int, default=40)
+  parser.add_argument('--hidden_space_size', type=int, default=512)
+  parser.add_argument('--minimum_batch_size', type=int, default=20)
   parser.add_argument('--episode_count', type=int, default=2000)
   parser.add_argument('--print_interval', type=int, default=1)
   args = parser.parse_args()
@@ -730,20 +839,37 @@ if __name__ == "__main__":
     
     start_time = time.time()
     result = inference(available_kernels,
-                        max_number_of_step=args.max_steps_limit,
+                        max_number_of_step = args.max_steps_limit,
                         path_save_episode = args.path,
                         model_path = args.model_name,
                         max_trial = args.max_inference_trial,
-                        strategies= args.inference_strategy)
+                        strategies = args.inference_strategy,
+                        learning_rate = args.learning_rate, 
+                        gamma = args.gamma,
+                        lmbda = args.lmbda, 
+                        eps_clip = args.eps_clip, 
+                        K_epoch = args.K_epoch, 
+                        state_size = args.state_size, 
+                        action_size = args.action_size, 
+                        value_size = args.value_size, 
+                        hidden_space_size = args.hidden_space_size)
     print(f"Inference elapsed time: {format_time(time.time() - start_time)}")
   else:
     # Initialize database of the environment
     # if load_val(default = 0,filename = "state.pkl") == 0 :
-    dataset = load_worlds(True, True, filter_novariable=True)
+    # dataset = load_worlds(True, True, filter_novariable=True)
+    # load_db = KernelEnv(available_kernels=dataset, db_path = args.path + 'dataset_training.db')
+    # del load_db, dataset
+    # force_oom()
+    from tinygrad.tensor import Tensor
+    from models.resnet import ResNet50
+    mdl = ResNet50()
+    example = Tensor.empty(64, 3, 224, 224)
+    dataset = extract_ast_kernels(mdl,example)
     load_db = KernelEnv(available_kernels=dataset, db_path = args.path + 'dataset_training.db')
     del load_db, dataset
-    # force_oom()
-
+    del mdl, example
+    force_oom()
     training(
         learning_rate=args.learning_rate,
         gamma=args.gamma,
@@ -761,3 +887,5 @@ if __name__ == "__main__":
         path_save_episode = args.path,
         model_path= args.model_name
     )
+
+        
