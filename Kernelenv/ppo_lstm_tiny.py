@@ -807,7 +807,7 @@ if __name__ == "__main__":
   #by default without infer it will perform training
   parser.add_argument('--infer', help='Perform inference', action='store_true')
   #share parameter between inference and training
-  parser.add_argument('--path', help='Path to save episode', default='/home/hotmil/ubuntu/TinyRL/test7/')
+  parser.add_argument('--path', help='Path to save episode', default='/home/usr/ubuntu/TinyRL/test7/')
   parser.add_argument('--model_name', help='model name', default='model_all.safetensors')
   parser.add_argument('--max_steps_limit', type=int, default=60)
   #inference parameter
