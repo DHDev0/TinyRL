@@ -61,6 +61,151 @@ optimizing for CUDA
 *** 2380.44 ms : kernel 58 E_8_125_8_8n1                         [125, 8, 1]        [8, 8, 1]    takes    0.02 ms,      6 GFLOPS
 ******* total 2380.46 ms,    222 GFLOPS
 
+
+#########################NEW VERSION WITH 1021 state using tinygrad #######################################################
+
+
+(tiny) root@LAPTOP-5USAF0E6:/home/hotmil/ubuntu# DEBUG=1 TRITON=1 python /home/hotmil/ubuntu/TinyRL/ppo_lstm_tiny.py --infer --model_name 600_episode_model_all.safetensors
+optimizing for <functools.cached_property object at 0x7f12459311e0>
+ram used:  0.02 GB, optimizer.v.7                                     : 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:00<00:00, 154.14it/s]
+loaded weights in 252.27 ms, 0.02 GB loaded at 0.08 GB/s
+cache is out of date, clearing it
+Strategy:  best_max_trial_policy
+| Kernel:    0| Init Spd:      9957.277 ms | Up:      112.719x | New Spd:         88.337 ms | Act:  [42, 9, 9, 41, 46, 46, 9]                                    | Kernel shape: _2__28__112__8__4__2__2__3__7__7__4__4__4
+| Kernel:    1| Init Spd:       373.293 ms | Up:       43.564x | New Spd:          8.569 ms | Act:  [42, 42]                                                     | Kernel shape: 802816__8__8
+| Kernel:    2| Init Spd:       159.121 ms | Up:        4.323x | New Spd:         36.812 ms | Act:  [41, 41, 9, 41]                                              | Kernel shape: _64__14__56__4__4__4__3__3__4
+| Kernel:    3| Init Spd:       585.630 ms | Up:       29.849x | New Spd:         19.620 ms | Act:  [42, 9, 9, 41]                                               | Kernel shape: _2__4_3136__8__4__64__4__4
+| Kernel:    4| Init Spd:      7232.029 ms | Up:       44.173x | New Spd:        163.720 ms | Act:  [42, 9, 48, 48]                                              | Kernel shape: _8__56__56__8__4__4__64__3__3__4
+| Kernel:    5| Init Spd:      2402.288 ms | Up:       18.803x | New Spd:        127.762 ms | Act:  [42, 9, 46]                                                  | Kernel shape: _8__32_3136__8__2__64__4
+| Kernel:    6| Init Spd:      3641.704 ms | Up:       52.504x | New Spd:         69.361 ms | Act:  [42, 9, 9, 48, 46]                                           | Kernel shape: _8__2_3136__8__4__2__64__4__4
+| Kernel:    7| Init Spd:      2755.134 ms | Up:       40.963x | New Spd:         67.259 ms | Act:  [42, 9, 46, 48, 46, 46]                                      | Kernel shape: _8_1568__8__2__4__2__2__256__4
+| Kernel:    8| Init Spd:      7232.029 ms | Up:       44.173x | New Spd:        163.720 ms | Act:  [42, 9, 48, 48]                                              | Kernel shape: _8__56__56__8__4__4__64__3__3__4
+| Kernel:    9| Init Spd:      2420.343 ms | Up:       34.809x | New Spd:         69.532 ms | Act:  [42, 9, 9, 48, 46]                                           | Kernel shape: _8__2_3136__8__4__2__64__4__4
+| Kernel:   10| Init Spd:      2755.134 ms | Up:       40.963x | New Spd:         67.259 ms | Act:  [42, 9, 46, 48, 46, 46]                                      | Kernel shape: _8_1568__8__2__4__2__2__256__4
+| Kernel:   11| Init Spd:      7232.029 ms | Up:       44.173x | New Spd:        163.720 ms | Act:  [42, 9, 48, 48]                                              | Kernel shape: _8__56__56__8__4__4__64__3__3__4
+| Kernel:   12| Init Spd:      2420.343 ms | Up:       34.809x | New Spd:         69.532 ms | Act:  [42, 9, 9, 48, 46]                                           | Kernel shape: _8__2_3136__8__4__2__64__4__4
+| Kernel:   13| Init Spd:     21875.852 ms | Up:      155.413x | New Spd:        140.759 ms | Act:  [42, 9, 46, 48, 46]                                          | Kernel shape: _8__2_3136__8__2__4__2__256__4
+| Kernel:   14| Init Spd:      3153.854 ms | Up:       19.390x | New Spd:        162.656 ms | Act:  [42, 9, 48, 48]                                              | Kernel shape: _8__2__28__28__8__4__4__128__3__3__4
+| Kernel:   15| Init Spd:      6292.504 ms | Up:       43.325x | New Spd:        145.239 ms | Act:  [42, 9, 48, 48, 46]                                          | Kernel shape: _8__4__28__28__8__4__4__2__256__4
+| Kernel:   16| Init Spd:      2940.649 ms | Up:       35.962x | New Spd:         81.772 ms | Act:  [41, 9, 41, 48, 46]                                          | Kernel shape: _4__16__784__4__4__4__2__128__4
+| Kernel:   17| Init Spd:      2916.614 ms | Up:       40.852x | New Spd:         71.395 ms | Act:  [42, 9, 46, 48, 46]                                          | Kernel shape: _8__2__784__8__2__4__2__512__4
+| Kernel:   18| Init Spd:      3466.330 ms | Up:       21.027x | New Spd:        164.855 ms | Act:  [42, 9, 48, 48]                                              | Kernel shape: _8__2__28__28__8__4__4__128__3__3__4
+| Kernel:   19| Init Spd:      2874.671 ms | Up:       46.949x | New Spd:         61.229 ms | Act:  [42, 9, 9, 48, 46]                                           | Kernel shape: _8__4__784__8__4__2__128__4__4
+| Kernel:   20| Init Spd:      2916.614 ms | Up:       40.852x | New Spd:         71.395 ms | Act:  [42, 9, 46, 48, 46]                                          | Kernel shape: _8__2__784__8__2__4__2__512__4
+| Kernel:   21| Init Spd:      3466.330 ms | Up:       21.027x | New Spd:        164.855 ms | Act:  [42, 9, 48, 48]                                              | Kernel shape: _8__2__28__28__8__4__4__128__3__3__4
+| Kernel:   22| Init Spd:      2874.671 ms | Up:       46.949x | New Spd:         61.229 ms | Act:  [42, 9, 9, 48, 46]                                           | Kernel shape: _8__4__784__8__4__2__128__4__4
+| Kernel:   23| Init Spd:      2916.614 ms | Up:       40.852x | New Spd:         71.395 ms | Act:  [42, 9, 46, 48, 46]                                          | Kernel shape: _8__2__784__8__2__4__2__512__4
+| Kernel:   24| Init Spd:      3466.330 ms | Up:       21.027x | New Spd:        164.855 ms | Act:  [42, 9, 48, 48]                                              | Kernel shape: _8__2__28__28__8__4__4__128__3__3__4
+| Kernel:   25| Init Spd:      2874.671 ms | Up:       46.949x | New Spd:         61.229 ms | Act:  [42, 9, 9, 48, 46]                                           | Kernel shape: _8__4__784__8__4__2__128__4__4
+| Kernel:   26| Init Spd:     12978.749 ms | Up:       90.478x | New Spd:        143.446 ms | Act:  [42, 9, 46, 48, 48]                                          | Kernel shape: _8__2__784__8__2__4__4__512__4
+| Kernel:   27| Init Spd:      3363.308 ms | Up:       20.333x | New Spd:        165.410 ms | Act:  [42, 9, 48, 48]                                              | Kernel shape: _8__4__14__14__8__4__4__256__3__3__4
+| Kernel:   28| Init Spd:      9557.246 ms | Up:       66.580x | New Spd:        143.546 ms | Act:  [42, 9, 48, 48, 46]                                          | Kernel shape: _8__8__14__14__8__4__4__2__512__4
+| Kernel:   29| Init Spd:      6329.991 ms | Up:      111.252x | New Spd:         56.898 ms | Act:  [42, 9, 9, 48, 48]                                           | Kernel shape: _8__4__196__8__4__4__256__4__4
+| Kernel:   30| Init Spd:      3739.091 ms | Up:       45.033x | New Spd:         83.030 ms | Act:  [42, 9, 46, 46]                                              | Kernel shape: _8__16__196__8__2__2_1024__4
+| Kernel:   31| Init Spd:      3427.789 ms | Up:       20.592x | New Spd:        166.461 ms | Act:  [42, 9, 48, 48]                                              | Kernel shape: _8__4__14__14__8__4__4__256__3__3__4
+| Kernel:   32| Init Spd:      2819.359 ms | Up:       48.873x | New Spd:         57.687 ms | Act:  [42, 9, 9, 48, 46]                                           | Kernel shape: _8__8__196__8__4__2__256__4__4
+| Kernel:   33| Init Spd:      3739.091 ms | Up:       45.033x | New Spd:         83.030 ms | Act:  [42, 9, 46, 46]                                              | Kernel shape: _8__16__196__8__2__2_1024__4
+| Kernel:   34| Init Spd:      3427.789 ms | Up:       20.592x | New Spd:        166.461 ms | Act:  [42, 9, 48, 48]                                              | Kernel shape: _8__4__14__14__8__4__4__256__3__3__4
+| Kernel:   35| Init Spd:      2819.359 ms | Up:       48.873x | New Spd:         57.687 ms | Act:  [42, 9, 9, 48, 46]                                           | Kernel shape: _8__8__196__8__4__2__256__4__4
+| Kernel:   36| Init Spd:      3739.091 ms | Up:       45.033x | New Spd:         83.030 ms | Act:  [42, 9, 46, 46]                                              | Kernel shape: _8__16__196__8__2__2_1024__4
+| Kernel:   37| Init Spd:      3427.789 ms | Up:       20.592x | New Spd:        166.461 ms | Act:  [42, 9, 48, 48]                                              | Kernel shape: _8__4__14__14__8__4__4__256__3__3__4
+| Kernel:   38| Init Spd:      2819.359 ms | Up:       48.873x | New Spd:         57.687 ms | Act:  [42, 9, 9, 48, 46]                                           | Kernel shape: _8__8__196__8__4__2__256__4__4
+| Kernel:   39| Init Spd:      3739.091 ms | Up:       45.033x | New Spd:         83.030 ms | Act:  [42, 9, 46, 46]                                              | Kernel shape: _8__16__196__8__2__2_1024__4
+| Kernel:   40| Init Spd:      3427.789 ms | Up:       20.592x | New Spd:        166.461 ms | Act:  [42, 9, 48, 48]                                              | Kernel shape: _8__4__14__14__8__4__4__256__3__3__4
+| Kernel:   41| Init Spd:      2819.359 ms | Up:       48.873x | New Spd:         57.687 ms | Act:  [42, 9, 9, 48, 46]                                           | Kernel shape: _8__8__196__8__4__2__256__4__4
+| Kernel:   42| Init Spd:      3739.091 ms | Up:       45.033x | New Spd:         83.030 ms | Act:  [42, 9, 46, 46]                                              | Kernel shape: _8__16__196__8__2__2_1024__4
+| Kernel:   43| Init Spd:      3427.789 ms | Up:       20.592x | New Spd:        166.461 ms | Act:  [42, 9, 48, 48]                                              | Kernel shape: _8__4__14__14__8__4__4__256__3__3__4
+| Kernel:   44| Init Spd:      2819.359 ms | Up:       48.873x | New Spd:         57.687 ms | Act:  [42, 9, 9, 48, 46]                                           | Kernel shape: _8__8__196__8__4__2__256__4__4
+| Kernel:   45| Init Spd:      8897.167 ms | Up:       54.344x | New Spd:        163.718 ms | Act:  [42, 9, 46, 46]                                              | Kernel shape: _8__32__196__8__2__2_1024__4
+| Kernel:   46| Init Spd:      3125.871 ms | Up:       20.329x | New Spd:        153.762 ms | Act:  [41, 9, 41, 48]                                              | Kernel shape: _4__32__7__7__4__4__4__512__3__3__4
+| Kernel:   47| Init Spd:      7780.434 ms | Up:       50.800x | New Spd:        153.158 ms | Act:  [42, 9, 48]                                                  | Kernel shape: _8__128__7__7__8__4_1024__4
+| Kernel:   48| Init Spd:      2638.873 ms | Up:       63.517x | New Spd:         41.546 ms | Act:  [42, 9, 9, 41]                                               | Kernel shape: _2__128__49__8__4__512__4__4
+| Kernel:   49| Init Spd:      2861.990 ms | Up:       29.764x | New Spd:         96.156 ms | Act:  [42, 9, 46, 46]                                              | Kernel shape: _8__32__49__8__2__2_2048__4
+| Kernel:   50| Init Spd:      3469.083 ms | Up:       21.923x | New Spd:        158.240 ms | Act:  [42, 9, 48, 46]                                              | Kernel shape: _8__16__7__7__8__4__2__512__3__3__4
+| Kernel:   51| Init Spd:      3043.754 ms | Up:       72.722x | New Spd:         41.855 ms | Act:  [42, 9, 9, 41, 46]                                           | Kernel shape: _2__64__49__8__4__2__512__4__4
+| Kernel:   52| Init Spd:      2861.990 ms | Up:       29.764x | New Spd:         96.156 ms | Act:  [42, 9, 46, 46]                                              | Kernel shape: _8__32__49__8__2__2_2048__4
+| Kernel:   53| Init Spd:      3469.083 ms | Up:       21.923x | New Spd:        158.240 ms | Act:  [42, 9, 48, 46]                                              | Kernel shape: _8__16__7__7__8__4__2__512__3__3__4
+| Kernel:   54| Init Spd:      7541.092 ms | Up:      108.486x | New Spd:         69.512 ms | Act:  [42, 9, 46, 48]                                              | Kernel shape: _8__64__49__8__2__4__512__4
+| Kernel:   55| Init Spd:         8.509 ms | Up:        3.707x | New Spd:          2.296 ms | Act:  [42, 46]                                                     | Kernel shape: 16384__4__2__49
+| Kernel:   56| Init Spd:       181.732 ms | Up:       29.510x | New Spd:          6.158 ms | Act:  [42, 46, 41, 9]                                              | Kernel shape: _2__125__8__2__4_2048__4
+| Kernel:   57| Init Spd:         0.470 ms | Up:        1.000x | New Spd:          0.470 ms | Act:  []                                                           | Kernel shape: _16__4_1000
+| Kernel:   58| Init Spd:         0.737 ms | Up:        1.434x | New Spd:          0.514 ms | Act:  [41, 46]                                                     | Kernel shape: _16__2__2_1000
+| Kernel:   59| Init Spd:         0.873 ms | Up:       18.149x | New Spd:          0.048 ms | Act:  [42, 46, 41]                                                 | Kernel shape: _2__500__8__2__4
+TOTAL SpeedUP: 41.789x, Previous Total time: 239244.203 ms, New total time: 5725.087 ms
+Inference elapsed time: 00 H 29 min 38 sec 601 ms 544 us 
+(tiny) root@LAPTOP-5USAF0E6:/home/hotmil/ubuntu# DEBUG=1 TRITON=1 python /home/hotmil/ubuntu/TinyRL/ppo_lstm_tiny.py --infer --model_name 100_episode_model_all.safetensors
+optimizing for <functools.cached_property object at 0x7f07087f11e0>
+ram used:  0.02 GB, optimizer.v.7                                     : 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| 36/36 [00:00<00:00, 122.80it/s]
+loaded weights in 297.92 ms, 0.02 GB loaded at 0.07 GB/s
+Strategy:  best_max_trial_policy
+| Kernel:    0| Init Spd:      9957.277 ms | Up:       28.908x | New Spd:        344.449 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__4__112__112__8__4__4__3__7__7
+| Kernel:    1| Init Spd:       373.293 ms | Up:       66.329x | New Spd:          5.628 ms | Act:  [42, 42, 2, 39, 39]                                          | Kernel shape: 100352__8__8__2__2__2
+| Kernel:    2| Init Spd:       159.121 ms | Up:        4.305x | New Spd:         36.962 ms | Act:  [2]                                                          | Kernel shape: 2048__56__56__3__3__2
+| Kernel:    3| Init Spd:       585.630 ms | Up:       15.941x | New Spd:         36.737 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__4_3136__8__4__4__64
+| Kernel:    4| Init Spd:      7232.029 ms | Up:       23.315x | New Spd:        310.182 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__4__56__56__8__4__4__64__3__3
+| Kernel:    5| Init Spd:      2402.288 ms | Up:       12.759x | New Spd:        188.285 ms | Act:  [42, 48]                                                     | Kernel shape: _8__64_3136__8__4__64
+| Kernel:    6| Init Spd:      3641.704 ms | Up:       22.724x | New Spd:        160.261 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__16_3136__8__4__4__2__64
+| Kernel:    7| Init Spd:      2755.134 ms | Up:       15.864x | New Spd:        173.672 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__4_3136__8__4__4__256
+| Kernel:    8| Init Spd:      7232.029 ms | Up:       23.315x | New Spd:        310.182 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__4__56__56__8__4__4__64__3__3
+| Kernel:    9| Init Spd:      2420.343 ms | Up:       15.318x | New Spd:        158.007 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__16_3136__8__4__4__64
+| Kernel:   10| Init Spd:      2755.134 ms | Up:       15.864x | New Spd:        173.672 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__4_3136__8__4__4__256
+| Kernel:   11| Init Spd:      7232.029 ms | Up:       23.315x | New Spd:        310.182 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__4__56__56__8__4__4__64__3__3
+| Kernel:   12| Init Spd:      2420.343 ms | Up:       15.318x | New Spd:        158.007 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__16_3136__8__4__4__64
+| Kernel:   13| Init Spd:     21875.852 ms | Up:       65.503x | New Spd:        333.967 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__8_3136__8__4__4__2__256
+| Kernel:   14| Init Spd:      3153.854 ms | Up:        9.904x | New Spd:        318.432 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__8__28__28__8__4__4__128__3__3
+| Kernel:   15| Init Spd:      6292.504 ms | Up:       17.730x | New Spd:        354.912 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__32__28__28__8__4__4__2__256
+| Kernel:   16| Init Spd:      2940.649 ms | Up:       19.229x | New Spd:        152.931 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__32__784__8__4__4__2__128
+| Kernel:   17| Init Spd:      2916.614 ms | Up:       17.048x | New Spd:        171.080 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__8__784__8__4__4__512
+| Kernel:   18| Init Spd:      3466.330 ms | Up:       11.076x | New Spd:        312.948 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__8__28__28__8__4__4__128__3__3
+| Kernel:   19| Init Spd:      2874.671 ms | Up:       18.827x | New Spd:        152.688 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__32__784__8__4__4__2__128
+| Kernel:   20| Init Spd:      2916.614 ms | Up:       17.048x | New Spd:        171.080 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__8__784__8__4__4__512
+| Kernel:   21| Init Spd:      3466.330 ms | Up:       11.076x | New Spd:        312.948 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__8__28__28__8__4__4__128__3__3
+| Kernel:   22| Init Spd:      2874.671 ms | Up:       18.827x | New Spd:        152.688 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__32__784__8__4__4__2__128
+| Kernel:   23| Init Spd:      2916.614 ms | Up:       17.048x | New Spd:        171.080 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__8__784__8__4__4__512
+| Kernel:   24| Init Spd:      3466.330 ms | Up:       11.076x | New Spd:        312.948 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__8__28__28__8__4__4__128__3__3
+| Kernel:   25| Init Spd:      2874.671 ms | Up:       18.827x | New Spd:        152.688 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__32__784__8__4__4__2__128
+| Kernel:   26| Init Spd:     12978.749 ms | Up:       39.013x | New Spd:        332.681 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__16__784__8__4__4__512
+| Kernel:   27| Init Spd:      3363.308 ms | Up:       10.240x | New Spd:        328.455 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__16__14__14__8__4__4__256__3__3
+| Kernel:   28| Init Spd:      9557.246 ms | Up:       27.693x | New Spd:        345.117 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__64__14__14__8__4__4__512
+| Kernel:   29| Init Spd:      6329.991 ms | Up:       40.824x | New Spd:        155.057 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__64__196__8__4__4__2__256
+| Kernel:   30| Init Spd:      3739.091 ms | Up:       23.127x | New Spd:        161.678 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__16__196__8__4__4_1024
+| Kernel:   31| Init Spd:      3427.789 ms | Up:       10.738x | New Spd:        319.213 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__16__14__14__8__4__4__2__256__3__3
+| Kernel:   32| Init Spd:      2819.359 ms | Up:       18.083x | New Spd:        155.911 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__64__196__8__4__4__2__256
+| Kernel:   33| Init Spd:      3739.091 ms | Up:       23.127x | New Spd:        161.678 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__16__196__8__4__4_1024
+| Kernel:   34| Init Spd:      3427.789 ms | Up:       10.738x | New Spd:        319.213 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__16__14__14__8__4__4__2__256__3__3
+| Kernel:   35| Init Spd:      2819.359 ms | Up:       18.083x | New Spd:        155.911 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__64__196__8__4__4__2__256
+| Kernel:   36| Init Spd:      3739.091 ms | Up:       23.127x | New Spd:        161.678 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__16__196__8__4__4_1024
+| Kernel:   37| Init Spd:      3427.789 ms | Up:       10.738x | New Spd:        319.213 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__16__14__14__8__4__4__2__256__3__3
+| Kernel:   38| Init Spd:      2819.359 ms | Up:       18.083x | New Spd:        155.911 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__64__196__8__4__4__2__256
+| Kernel:   39| Init Spd:      3739.091 ms | Up:       23.127x | New Spd:        161.678 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__16__196__8__4__4_1024
+| Kernel:   40| Init Spd:      3427.789 ms | Up:       10.738x | New Spd:        319.213 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__16__14__14__8__4__4__2__256__3__3
+| Kernel:   41| Init Spd:      2819.359 ms | Up:       18.083x | New Spd:        155.911 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__64__196__8__4__4__2__256
+| Kernel:   42| Init Spd:      3739.091 ms | Up:       23.127x | New Spd:        161.678 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__16__196__8__4__4_1024
+| Kernel:   43| Init Spd:      3427.789 ms | Up:       10.738x | New Spd:        319.213 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__16__14__14__8__4__4__2__256__3__3
+| Kernel:   44| Init Spd:      2819.359 ms | Up:       18.083x | New Spd:        155.911 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__64__196__8__4__4__2__256
+| Kernel:   45| Init Spd:      8897.167 ms | Up:       28.016x | New Spd:        317.575 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__32__196__8__4__4_1024
+| Kernel:   46| Init Spd:      3125.871 ms | Up:        9.796x | New Spd:        319.097 ms | Act:  [41, 48, 48, 39]                                             | Kernel shape: _8__32__7__7__4__4__4__2__512__3__3
+| Kernel:   47| Init Spd:      7780.434 ms | Up:       24.374x | New Spd:        319.206 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__128__7__7__8__4__4_1024
+| Kernel:   48| Init Spd:      2638.873 ms | Up:       12.873x | New Spd:        204.990 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__128__49__8__4__4__512
+| Kernel:   49| Init Spd:      2861.990 ms | Up:       17.361x | New Spd:        164.855 ms | Act:  [42, 48, 39]                                                 | Kernel shape: _4__128__49__8__4__2_2048
+| Kernel:   50| Init Spd:      3469.083 ms | Up:       11.227x | New Spd:        308.988 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__32__7__7__8__4__4__2__512__3__3
+| Kernel:   51| Init Spd:      3043.754 ms | Up:       14.732x | New Spd:        206.605 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__128__49__8__4__4__512
+| Kernel:   52| Init Spd:      2861.990 ms | Up:       17.361x | New Spd:        164.855 ms | Act:  [42, 48, 39]                                                 | Kernel shape: _4__128__49__8__4__2_2048
+| Kernel:   53| Init Spd:      3469.083 ms | Up:       11.227x | New Spd:        308.988 ms | Act:  [42, 48, 48, 39]                                             | Kernel shape: _4__32__7__7__8__4__4__2__512__3__3
+| Kernel:   54| Init Spd:      7541.092 ms | Up:       45.769x | New Spd:        164.763 ms | Act:  [42, 48, 48]                                                 | Kernel shape: _8__128__49__8__4__4__512
+| Kernel:   55| Init Spd:         8.509 ms | Up:        3.671x | New Spd:          2.318 ms | Act:  [42]                                                         | Kernel shape: 16384__8__49
+| Kernel:   56| Init Spd:       181.732 ms | Up:       71.851x | New Spd:          2.529 ms | Act:  [42, 42, 2, 2, 2]                                            | Kernel shape: _125__8__8_2048__2__2__2
+| Kernel:   57| Init Spd:         0.470 ms | Up:        2.684x | New Spd:          0.175 ms | Act:  [2]                                                          | Kernel shape: _32_1000__2
+| Kernel:   58| Init Spd:         0.737 ms | Up:        4.186x | New Spd:          0.176 ms | Act:  [2, 41, 42]                                                  | Kernel shape: _4__8_1000__2
+| Kernel:   59| Init Spd:         0.873 ms | Up:       14.965x | New Spd:          0.058 ms | Act:  [42, 42, 41]                                                 | Kernel shape: _250__8__8__4
+TOTAL SpeedUP: 19.503x, Previous Total time: 239244.203 ms, New total time: 12267.116 ms
+Inference elapsed time: 00 H 23 min 22 sec 251 ms 239 us 
+(tiny) root@LAPTOP-5USAF0E6:/home/hotmil/ubuntu# 
+
+
+
+################ORIGINAL ML VERSION WITH 200 something state using pytorch ################################################
+(the change in number between 58 to 59 kernel is: using a copy of empty tensor or creation a new empty tensor example add a kernel)
 optimizing for CUDA
 59
 Strategy:  best_max_trial_policy
@@ -124,6 +269,7 @@ Strategy:  best_max_trial_policy
 | Kernel:   57| Init Spd:         1.754 ms | Up:        3.379x | New Spd:          0.519 ms | Act:  [41]                                                         | Kernel shape: _16__4_1000
 | Kernel:   58| Init Spd:         1.722 ms | Up:       48.057x | New Spd:          0.036 ms | Act:  [41, 41, 46, 7]                                              | Kernel shape: _4__125__4__4__4__2
 TOTAL SpeedUP: 6.409x, Previous Total time: 443534.938 ms, New total time: 69207.093 ms
+Inference elapsed time: 00 H 03 min 25 sec 594 ms 427 us 
 
 (tiny) hotmil@LAPTOP-5USAF0E6:~/ubuntu$ TRITON=1 python /home/hotmil/ubuntu/TinyRL/ppo-lstm.py --infer --inference_strategy best_max_trial_value
 optimizing for CUDA
@@ -189,9 +335,8 @@ Strategy:  best_max_trial_value
 | Kernel:   57| Init Spd:         1.754 ms | Up:        3.379x | New Spd:          0.519 ms | Act:  [41]                                                         | Kernel shape: _16__4_1000
 | Kernel:   58| Init Spd:         1.722 ms | Up:       48.057x | New Spd:          0.036 ms | Act:  [41, 41, 46, 7]                                              | Kernel shape: _4__125__4__4__4__2
 TOTAL SpeedUP: 5.401x, Previous Total time: 443534.938 ms, New total time: 82118.083 ms
+Inference elapsed time: 00 H 04 min 22 sec 947 ms 156 us 
 
-(tiny) hotmil@LAPTOP-5USAF0E6:~/ubuntu$ TRITON=1 python /home/hotmil/ubuntu/TinyRL/ppo-lstm.py --infer --inference_strategy topk+fusmedian
-optimizing for CUDA
 59
 Strategy:  topk+fusmedian
 | Kernel:    0| Init Spd:      4988.076 ms | Up:       35.571x | New Spd:        140.231 ms | Act:  [41, 39, 9, 39, 39, 39, 39, 39, 9]                           | Kernel shape: _4__28__112__4__2__2__2__2__2__2__3__7__7__4__4
@@ -255,8 +400,6 @@ Strategy:  topk+fusmedian
 | Kernel:   58| Init Spd:         1.722 ms | Up:       48.057x | New Spd:          0.036 ms | Act:  [41, 41, 46, 7]                                              | Kernel shape: _4__125__4__4__4__2
 | Kernel:   59| Init Spd:         1.722 ms | Up:       48.057x | New Spd:          0.036 ms | Act:  [41, 41, 46, 7]                                              | Kernel shape: _4__125__4__4__4__2
 TOTAL SpeedUP: 10.648x, Previous Total time: 443534.938 ms, New total time: 41652.958 ms
-
-(tiny) hotmil@LAPTOP-5USAF0E6:~/ubuntu$ TRITON=1 python /home/hotmil/ubuntu/TinyRL/ppo-lstm.py --infer --inference_strategy valuefilter
 optimizing for CUDA
 59
 Strategy:  valuefilter
