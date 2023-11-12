@@ -37,7 +37,7 @@ class LSTMCell:
     i, f, g, o = i.sigmoid(), f.sigmoid(), g.tanh(), o.sigmoid()
     c = (f * hc[x.shape[0]:]) + (i * g)
     h = (o * c.tanh()).dropout(self.dropout)
-    return Tensor.cat(h, c)
+    return Tensor.cat(h, c).realize()
 
 
 class LSTM:
@@ -57,7 +57,7 @@ class LSTM:
           for i, cell in enumerate(self.cells))
       hc = Tensor.stack(new_hc[1:])
       output = hc[-1:, :x.shape[1]] if output is None else output.cat(hc[-1:, :x.shape[1]], dim=0)
-    return output, hc
+    return output.realize(), hc.realize()
 
 
 class PPO_tiny():
@@ -105,7 +105,7 @@ class PPO_tiny():
     processed_input = self.input_layer(input_state).relu()
     shaper = ((1, 1, processed_input.shape[0]) if len(processed_input.shape) == 1 else (processed_input.shape[0], 1, processed_input.shape[1]))
     reshaped_input = processed_input.reshape(*shaper)
-    lstm_output, lstm_hidden_state = self.lstm_layer(reshaped_input, hidden_state)
+    lstm_output, _ = self.lstm_layer(reshaped_input, hidden_state)
     value_output = self.value_output_layer(lstm_output)
     return value_output.realize()        
       
@@ -171,6 +171,7 @@ class PPO_tiny():
       loss = loss.mean()
       loss.backward()
       self.optimizer.step()
+      loss.realize()
       
     self.loss= loss.detach().numpy()
     if math.isinf(self.loss) or np.isnan(self.loss): raise ("gradient vanish")
@@ -210,19 +211,19 @@ def training(env=None, learning_rate : float = 0.0005, gamma : float = 0.98,
       action = np.random.choice(list(range(policy.shape[0])), p=policy)
 
       next_state, reward, done, _, _ = env.step(action)
-      model.put_data((state, action, reward, next_state, action_prob.flatten().detach().numpy()[action], hidden_state.detach().numpy(), new_hidden_state.detach().numpy(), done))
+      model.put_data((state, action, reward/100, next_state, action_prob.flatten().detach().numpy()[action], hidden_state.detach().numpy(), new_hidden_state.detach().numpy(), done))
       state , hidden_state = next_state , new_hidden_state
       max_steps += 1  
       c_score += reward
   
-      if len(model.data) >= minimum_batch_size:
+      if len(model.data) == minimum_batch_size:
         model.train_net()
-        current_episode += 1 
-        if current_episode % print_interval == 0:
-          print(f"# of episode: {current_episode}, avg score: {np.array(avg_score).mean():.3f}, % loss: {model.loss:.5f}")
-          safe_save(get_state_dict(model), full_model_path)    
-        avg_score.clear()      
-    avg_score.append(c_score)    
+    current_episode += 1 
+    avg_score.append(c_score) 
+    if current_episode % print_interval == 0:
+        print(f"# of episode: {current_episode}, avg score: {np.array(avg_score).mean():.3f}, loss: {model.loss:.5f}")
+        safe_save(get_state_dict(model), full_model_path)    
+        avg_score.clear()         
   env.close()
 
 
@@ -258,6 +259,7 @@ def inference(env : List[str], max_number_of_step : int = 20,
     state, reward, done, _, _ = env.step(sorted_indices[0])
     max_moves += 1 
     print(f"Move: {max_moves}, action: {sorted_indices[0]}, reward: {reward}, Gameover: {done}")
+  env.close
 
 
   
@@ -270,7 +272,7 @@ if __name__ == "__main__":
   #share parameter between inference and training
   parser.add_argument('--env', help='Environment', default='CartPole-v1')
   parser.add_argument('--render', help='Render mode', default='human') # rgb_array will change state to RGB array and anything else will run the env without visual render
-  parser.add_argument('--path', help='Path to save episode', default='/home/hotmil/ubuntu/TinyRL/cartpole/')
+  parser.add_argument('--path', help='Path to save episode', default='/home/usr/ubuntu/TinyRL/cartpole/')
   parser.add_argument('--model_name', help='model name', default='model_all.safetensors')
   parser.add_argument('--max_steps_limit', type=int, default=200)
   #training parameter
@@ -281,7 +283,7 @@ if __name__ == "__main__":
   parser.add_argument('--K_epoch', type=int, default=2)
   parser.add_argument('--hidden_space_size', type=int, default=64)
   parser.add_argument('--minimum_batch_size', type=int, default=20)
-  parser.add_argument('--episode_count', type=int, default=300)
+  parser.add_argument('--episode_count', type=int, default=1000)
   parser.add_argument('--print_interval', type=int, default=1)
   args = parser.parse_args()
   os.makedirs(args.path, exist_ok=True)
